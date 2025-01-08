@@ -81,6 +81,6 @@ Darrius,Davis,SR,FALSE,SS,S,DB,DEF,run_support,impact
 Ian,Ngakoue,SO,TRUE,SS,S,DB,DEF,run_support,elite
 George,Dayes,JR,FALSE,SS,S,DB,DEF,zone,impact
 Greg,Childers,FR,TRUE,SS,S,DB,DEF,zone,impact
-AJ,Seidler,JR,TRUE,K,K,ST,DEF,accurate,normal
-Randall,Fiore,FR,TRUE,K,K,ST,ST,power,impact
-Stanley,Spears,FR,FALSE,P,K,ST,ST,power,star
+AJ,Seidler,JR,TRUE,K,K,K,ST,accurate,normal
+Randall,Fiore,FR,TRUE,K,K,K,ST,power,impact
+Stanley,Spears,FR,FALSE,P,K,K,ST,power,star
