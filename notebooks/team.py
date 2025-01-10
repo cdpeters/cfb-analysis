@@ -1,6 +1,6 @@
 import marimo
 
-__generated_with = "0.10.9"
+__generated_with = "0.10.10"
 app = marimo.App(
     width="medium",
     css_file="C:\\Users\\cdpet\\Documents\\Post School Coursework\\dev-materials\\configs\\marimo\\theme\\custom-theme.css",
@@ -53,7 +53,8 @@ def _(mo):
         | dataframe                 | description                                                                                                                                 |
         |:--------------------------|:--------------------------------------------------------------------------------------------------------------------------------------------|
         | `positions`               | the unique set of positions                                                                                                                 |
-        | `groups`               | the unique set of position groups                                                                                                           |
+        | `groups`                  | the unique set of position groups                                                                                                           |
+        | `secondary_groups`        | the unique set of secondary position groups                                                                                                 |
         | `dev_traits`              | the unique set of dev traits. An index column named `order` is assigned and will be used to order the stacking of the stacked bar chart     |
         | `position_dev_combos`     | dataframe of the cross join (cartesian product) of all positions with all dev traits                                                        |
         | `dev_per_position_pre`    | all dev traits per position. This is the minimal set - does not include rows where there are no players of a given position-dev combination |
@@ -71,6 +72,9 @@ def _(create_dataframe_md, dev_trait_enum, mo, pl, team):
 
     # Create a dataframe of the unique position groups.
     groups = team.select("group").unique()
+
+    # Create a dataframe of the unique secondary position groups.
+    secondary_groups = team.select("secondary_group").unique()
 
     # Create a dataframe of just the dev traits with an index column named
     # `order` to be used as the order for the stacked bar chart.
@@ -107,6 +111,8 @@ def _(create_dataframe_md, dev_trait_enum, mo, pl, team):
             positions,
             create_dataframe_md("groups"),
             groups,
+            create_dataframe_md("secondary_groups"),
+            secondary_groups,
             create_dataframe_md("dev_traits"),
             dev_traits,
             create_dataframe_md("position_dev_combos"),
@@ -126,6 +132,7 @@ def _(create_dataframe_md, dev_trait_enum, mo, pl, team):
         groups,
         position_dev_combos,
         positions,
+        secondary_groups,
         star_elite_per_position,
     )
 
@@ -191,7 +198,9 @@ def _(
         .mark_bar()
         .encode(
             x=_x_axis,
-            y=alt.Y("count:Q", title=_y_axis_title, axis=alt.Axis(tickCount=2, format="d")),
+            y=alt.Y(
+                "count:Q", title=_y_axis_title, axis=alt.Axis(tickCount=2, format="d")
+            ),
             color=alt.Color(
                 "dev_trait:N",
                 title=_legend_title,
@@ -214,13 +223,17 @@ def _(
     )
 
     # Save the charts as images.
-    _dev_trait_chart.save(data_path / "images" / "dev_per_position.png", scale_factor=2.0)
+    _dev_trait_chart.save(
+        data_path / "images" / "dev_per_position.png", scale_factor=2.0
+    )
     _star_elite_chart.save(
         data_path / "images" / "star_elite_per_position.png", scale_factor=2.0
     )
 
     # Stack the charts for viewing.
-    mo.vstack([mo.ui.altair_chart(_dev_trait_chart), mo.ui.altair_chart(_star_elite_chart)])
+    mo.vstack(
+        [mo.ui.altair_chart(_dev_trait_chart), mo.ui.altair_chart(_star_elite_chart)]
+    )
     return
 
 
@@ -242,9 +255,9 @@ def _(class_enum, pl, team):
     player_classes = team.group_by(["class", "red_shirt"]).len("count")
 
     # Enforce the class order in the `player_classes` dataframe.
-    player_classes = player_classes.join(player_class_order, on="class", how="left").sort(
-        ["order", "red_shirt"]
-    )
+    player_classes = player_classes.join(
+        player_class_order, on="class", how="left"
+    ).sort(["order", "red_shirt"])
     player_classes
     return player_class_order, player_classes
 
@@ -306,9 +319,11 @@ def _(
 
 @app.cell
 def _(team):
-    positions_groups = team.group_by(["group", "position"]).len("count")
-    positions_groups
-    return (positions_groups,)
+    secondary_position_groups = team.group_by(["secondary_group", "position"]).len(
+        "count"
+    )
+    secondary_position_groups
+    return (secondary_position_groups,)
 
 
 @app.cell
@@ -316,20 +331,28 @@ def _(
     alt,
     anchor,
     font_size,
-    groups,
     mo,
     positions,
-    positions_groups,
     season,
+    secondary_groups,
+    secondary_position_groups,
 ):
     _heatmap = (
-        alt.Chart(positions_groups)
+        alt.Chart(secondary_position_groups)
         .mark_rect()
         .encode(
-            x=alt.X("position:N", title="Position", sort=positions["position"].to_list()),
-            y=alt.Y("group:N", title="Position Group", sort=groups["group"].to_list()),
-            color=alt.Color("count:Q", title="Players", scale=alt.Scale(scheme="viridis")),
-            tooltip=["position", "group", "count"],
+            x=alt.X(
+                "position:N", title="Position", sort=positions["position"].to_list()
+            ),
+            y=alt.Y(
+                "secondary_group:N",
+                title="Secondary Group",
+                sort=secondary_groups["secondary_group"].to_list(),
+            ),
+            color=alt.Color(
+                "count:Q", title="Players", scale=alt.Scale(scheme="viridis")
+            ),
+            tooltip=["position", "secondary_group", "count"],
         )
         .properties(
             width=600,
@@ -344,7 +367,9 @@ def _(
 
     _text = _heatmap.mark_text().encode(
         text="count:Q",
-        color=alt.condition(alt.datum.count < 7, alt.value("white"), alt.value("black")),
+        color=alt.condition(
+            alt.datum.count < 7, alt.value("white"), alt.value("black")
+        ),
     )
 
     mo.ui.altair_chart(_heatmap + _text)
@@ -377,7 +402,9 @@ def _(
         alt.Chart(dev_pipeline)
         .mark_bar()
         .encode(
-            x=alt.X("position:N", title="Position", sort=positions["position"].to_list()),
+            x=alt.X(
+                "position:N", title="Position", sort=positions["position"].to_list()
+            ),
             y=alt.Y("count:Q", title="Players"),
             color=alt.Color(
                 "dev_trait:N",
@@ -401,7 +428,9 @@ def _(
     )
 
     # Save the chart as an image.
-    _dev_pipeline_chart.save(data_path / "images" / "dev_pipeline.png", scale_factor=2.0)
+    _dev_pipeline_chart.save(
+        data_path / "images" / "dev_pipeline.png", scale_factor=2.0
+    )
 
     mo.ui.altair_chart(_dev_pipeline_chart)
     return
@@ -450,9 +479,9 @@ def _(pl, team_archetypes):
 
     db_archetypes = db_archetypes.with_columns(
         [
-            pl.concat_str([pl.col("position"), pl.col("archetype")], separator="_").alias(
-                "position_archetype"
-            )
+            pl.concat_str(
+                [pl.col("position"), pl.col("archetype")], separator="_"
+            ).alias("position_archetype")
         ]
     )
     db_archetypes
@@ -513,6 +542,7 @@ def _():
     import altair as alt
     import marimo as mo
     import polars as pl
+
     return Path, alt, mo, pl
 
 
@@ -590,6 +620,7 @@ def _(Path):
 
         except IndexError:
             return None
+
     return (find_project_path,)
 
 
@@ -607,6 +638,7 @@ def _(mo):
             ### *`{frame_name}`*
         """
         )
+
     return (create_dataframe_md,)
 
 
