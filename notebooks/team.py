@@ -1,10 +1,9 @@
 import marimo
 
-__generated_with = "0.10.10"
+__generated_with = "0.10.13"
 app = marimo.App(
     width="medium",
     css_file="C:\\Users\\cdpet\\Documents\\Post School Coursework\\dev-materials\\configs\\marimo\\theme\\custom-theme.css",
-    auto_download=["html", "ipynb"],
 )
 
 
@@ -20,9 +19,23 @@ def _(mo):
     return
 
 
+@app.cell(hide_code=True)
+def _(mo):
+    # Current dynasty season.
+    seasons = ["2027", "2028"]
+
+    season = mo.ui.dropdown(options=seasons, value="2027", label="Season")
+    season
+    return season, seasons
+
+
 @app.cell
-def _(data_path, pl):
-    team = pl.read_csv(data_path / "csv" / "cfb_team.csv")
+def _(data_path, pl, season):
+    # CSV name.
+    csv_name = f"{season.value}_team.csv"
+
+    # Create the `team` dataframe from the
+    team = pl.read_csv(data_path / "csv" / csv_name)
 
     class_enum = pl.Enum(["SR", "JR", "SO", "FR"])
     team_enum = pl.Enum(["OFF", "DEF", "ST"])
@@ -40,7 +53,7 @@ def _(data_path, pl):
         }
     )
     team
-    return class_enum, dev_trait_enum, team, team_enum
+    return class_enum, csv_name, dev_trait_enum, team, team_enum
 
 
 @app.cell(hide_code=True)
@@ -185,7 +198,7 @@ def _(
             width=width,
             height=350,
             title={
-                "text": f"{season} Player Development Traits per Position",
+                "text": f"{season.value} Player Development Traits per Position",
                 "fontSize": font_size,
                 "anchor": anchor,
             },
@@ -198,9 +211,7 @@ def _(
         .mark_bar()
         .encode(
             x=_x_axis,
-            y=alt.Y(
-                "count:Q", title=_y_axis_title, axis=alt.Axis(tickCount=2, format="d")
-            ),
+            y=alt.Y("count:Q", title=_y_axis_title, axis=alt.Axis(tickCount=2, format="d")),
             color=alt.Color(
                 "dev_trait:N",
                 title=_legend_title,
@@ -215,7 +226,7 @@ def _(
             width=width,
             height=75,
             title={
-                "text": f"{season} Star and Elite Players per Position",
+                "text": f"{season.value} Star and Elite Players per Position",
                 "fontSize": font_size,
                 "anchor": anchor,
             },
@@ -223,17 +234,13 @@ def _(
     )
 
     # Save the charts as images.
-    _dev_trait_chart.save(
-        data_path / "images" / "dev_per_position.png", scale_factor=2.0
-    )
+    _dev_trait_chart.save(data_path / "images" / "dev_per_position.png", scale_factor=2.0)
     _star_elite_chart.save(
         data_path / "images" / "star_elite_per_position.png", scale_factor=2.0
     )
 
     # Stack the charts for viewing.
-    mo.vstack(
-        [mo.ui.altair_chart(_dev_trait_chart), mo.ui.altair_chart(_star_elite_chart)]
-    )
+    mo.vstack([mo.ui.altair_chart(_dev_trait_chart), mo.ui.altair_chart(_star_elite_chart)])
     return
 
 
@@ -255,9 +262,9 @@ def _(class_enum, pl, team):
     player_classes = team.group_by(["class", "red_shirt"]).len("count")
 
     # Enforce the class order in the `player_classes` dataframe.
-    player_classes = player_classes.join(
-        player_class_order, on="class", how="left"
-    ).sort(["order", "red_shirt"])
+    player_classes = player_classes.join(player_class_order, on="class", how="left").sort(
+        ["order", "red_shirt"]
+    )
     player_classes
     return player_class_order, player_classes
 
@@ -301,7 +308,7 @@ def _(
             width=250,
             height=250,
             title={
-                "text": f"{season} Player Class Distribution",
+                "text": f"{season.value} Player Class Distribution",
                 "fontSize": font_size,
                 "anchor": anchor,
             },
@@ -319,9 +326,7 @@ def _(
 
 @app.cell
 def _(team):
-    secondary_position_groups = team.group_by(["secondary_group", "position"]).len(
-        "count"
-    )
+    secondary_position_groups = team.group_by(["secondary_group", "position"]).len("count")
     secondary_position_groups
     return (secondary_position_groups,)
 
@@ -341,24 +346,20 @@ def _(
         alt.Chart(secondary_position_groups)
         .mark_rect()
         .encode(
-            x=alt.X(
-                "position:N", title="Position", sort=positions["position"].to_list()
-            ),
+            x=alt.X("position:N", title="Position", sort=positions["position"].to_list()),
             y=alt.Y(
                 "secondary_group:N",
                 title="Secondary Group",
                 sort=secondary_groups["secondary_group"].to_list(),
             ),
-            color=alt.Color(
-                "count:Q", title="Players", scale=alt.Scale(scheme="viridis")
-            ),
+            color=alt.Color("count:Q", title="Players", scale=alt.Scale(scheme="viridis")),
             tooltip=["position", "secondary_group", "count"],
         )
         .properties(
             width=600,
             height=400,
             title={
-                "text": f"{season} Position Distribution by Group",
+                "text": f"{season.value} Position Distribution by Group",
                 "fontSize": font_size,
                 "anchor": anchor,
             },
@@ -367,9 +368,7 @@ def _(
 
     _text = _heatmap.mark_text().encode(
         text="count:Q",
-        color=alt.condition(
-            alt.datum.count < 7, alt.value("white"), alt.value("black")
-        ),
+        color=alt.condition(alt.datum.count < 7, alt.value("white"), alt.value("black")),
     )
 
     mo.ui.altair_chart(_heatmap + _text)
@@ -402,9 +401,7 @@ def _(
         alt.Chart(dev_pipeline)
         .mark_bar()
         .encode(
-            x=alt.X(
-                "position:N", title="Position", sort=positions["position"].to_list()
-            ),
+            x=alt.X("position:N", title="Position", sort=positions["position"].to_list()),
             y=alt.Y("count:Q", title="Players"),
             color=alt.Color(
                 "dev_trait:N",
@@ -420,7 +417,7 @@ def _(
         .facet(
             row=alt.Row("class:N", sort=["FR", "SO", "JR", "SR"], title="Class"),
             title={
-                "text": f"{season} Player Development Pipeline",
+                "text": f"{season.value} Player Development Pipeline",
                 "fontSize": font_size,
                 "anchor": anchor,
             },
@@ -428,9 +425,7 @@ def _(
     )
 
     # Save the chart as an image.
-    _dev_pipeline_chart.save(
-        data_path / "images" / "dev_pipeline.png", scale_factor=2.0
-    )
+    _dev_pipeline_chart.save(data_path / "images" / "dev_pipeline.png", scale_factor=2.0)
 
     mo.ui.altair_chart(_dev_pipeline_chart)
     return
@@ -479,9 +474,9 @@ def _(pl, team_archetypes):
 
     db_archetypes = db_archetypes.with_columns(
         [
-            pl.concat_str(
-                [pl.col("position"), pl.col("archetype")], separator="_"
-            ).alias("position_archetype")
+            pl.concat_str([pl.col("position"), pl.col("archetype")], separator="_").alias(
+                "position_archetype"
+            )
         ]
     )
     db_archetypes
@@ -502,7 +497,7 @@ def _(alt, anchor, db_archetypes, font_size, mo, season):
         .properties(
             width=400,
             title={
-                "text": f"{season} DB Archetypes",
+                "text": f"{season.value} DB Archetypes",
                 "fontSize": font_size,
                 "anchor": anchor,
             },
@@ -542,7 +537,6 @@ def _():
     import altair as alt
     import marimo as mo
     import polars as pl
-
     return Path, alt, mo, pl
 
 
@@ -554,9 +548,6 @@ def _(mo):
 
 @app.cell
 def _(find_project_path):
-    # Current dynasty season.
-    season = 2027
-
     # Shared color scheme.
     red_1 = "#991b1b"
     red_2 = "#ef4444"
@@ -571,17 +562,7 @@ def _(find_project_path):
     # Data directory path.
     _project_path = find_project_path("cfb-analysis")
     data_path = _project_path / "data"
-    return (
-        anchor,
-        data_path,
-        font_size,
-        red_1,
-        red_2,
-        red_3,
-        red_4,
-        season,
-        width,
-    )
+    return anchor, data_path, font_size, red_1, red_2, red_3, red_4, width
 
 
 @app.cell(hide_code=True)
@@ -620,7 +601,6 @@ def _(Path):
 
         except IndexError:
             return None
-
     return (find_project_path,)
 
 
@@ -632,14 +612,18 @@ def _(mo):
 
 @app.cell
 def _(mo):
-    def create_dataframe_md(frame_name):
+    def create_dataframe_md(frame_name: str) -> mo._output.md._md:
         return mo.md(
             f"""<br>
             ### *`{frame_name}`*
         """
         )
-
     return (create_dataframe_md,)
+
+
+@app.cell
+def _():
+    return
 
 
 if __name__ == "__main__":
