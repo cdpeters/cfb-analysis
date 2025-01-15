@@ -837,7 +837,7 @@ wheels = [
 
 [[package]]
 name = "marimo"
-version = "0.10.12"
+version = "0.10.13"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "click" },
@@ -858,9 +858,9 @@ dependencies = [
     { name = "uvicorn" },
     { name = "websockets" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/7e/e0/e8f6a5a71495972f723dac82a0b45503968e389171c06a6cec6424463a39/marimo-0.10.12.tar.gz", hash = "sha256:ccb6682f7645ac812445bb7e71c7e5c6b94d1bc8505e19c33b542482756768ce", size = 11853043 }
+sdist = { url = "https://files.pythonhosted.org/packages/bf/11/0c74cc9e493690da1317a5f5e99717a7fba22c8361aedccb3daf8dc405cc/marimo-0.10.13.tar.gz", hash = "sha256:4dfd7c13dfef07766337d2c7179cadc4847e12a740a856aca8b5fa3086f74adc", size = 11852610 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/97/7b/ad89d703508d3393bcabb340785bef352a4e53d65b068c614ee8752a7772/marimo-0.10.12-py3-none-any.whl", hash = "sha256:915ff89dc557a3a7dc9008fbff1efe55ca7caa8dc714e6d784ef55087490fa97", size = 12148616 },
+    { url = "https://files.pythonhosted.org/packages/ab/e8/1d4843860efc04196c64164b790214f1c557deb9fdd3ba1dee358e6906cd/marimo-0.10.13-py3-none-any.whl", hash = "sha256:6083a0d6f0e8af68a6d8fd645e02b12bcd21ff987510266dc882c6da9a31e7c0", size = 12149719 },
 ]
 
 [[package]]
@@ -945,11 +945,11 @@ wheels = [
 
 [[package]]
 name = "narwhals"
-version = "1.21.1"
+version = "1.22.0"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/ad/6d/1a3a84b2c3186465aa5e95146e96610b875b7a5bb899f6dd1206f0444c0e/narwhals-1.21.1.tar.gz", hash = "sha256:44082c6273fd0125a2bde5baae6ddb7465e185c24fd6e1c5e71cab1d746c89cc", size = 242809 }
+sdist = { url = "https://files.pythonhosted.org/packages/26/2d/3047f817d6a1290b96851950101776d40671c309bed36429537b5cab5b94/narwhals-1.22.0.tar.gz", hash = "sha256:8e257c5af70a82382796706f39d681290f2c482812474524087f36cb69f9d2f1", size = 241780 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/d0/4f/7c482d8fe70bc19e1e121ccd205fedac936bbb2ff3b789775294fdbe525b/narwhals-1.21.1-py3-none-any.whl", hash = "sha256:f5f2cd33a6fa636de74067f4050d6dd9a9343b39a5a911dc97810d55d8f24cdd", size = 282702 },
+    { url = "https://files.pythonhosted.org/packages/17/d9/00a937201a3ca6e8b2ca29226935be53dd7bc9bee27cb8ba5b27efe11ccf/narwhals-1.22.0-py3-none-any.whl", hash = "sha256:5c931bf8696b6dec276f590f1bc5043080606b16ce86d85c9b550312c981970f", size = 297474 },
 ]
 
 [[package]]
