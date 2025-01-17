@@ -24,12 +24,12 @@ def _(mo):
     # Current dynasty season.
     _seasons = ["2027", "2028"]
 
-    season = mo.ui.dropdown(options=_seasons, value="2027", label="Season")
+    season = mo.ui.dropdown(options=_seasons, value="2028", label="Season")
     season
     return (season,)
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(data_path, pl, season):
     # CSV name.
     _csv_name = f"{season.value}_team.csv"
@@ -56,373 +56,46 @@ def _(data_path, pl, season):
     return class_enum, dev_trait_enum, team, team_enum
 
 
-@app.cell
-def _():
-    # team.filter(pl.col("class") != "SR").sort("2028_ovr", descending=True)
-    return
-
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(
         r"""
         ## Exploratory Analysis
-        ### Dev Traits per Position
-        #### Create the Dataframes
-        | dataframe                 | description                                                                                                                                 |
-        |:--------------------------|:--------------------------------------------------------------------------------------------------------------------------------------------|
-        | `positions`               | the unique set of positions                                                                                                                 |
-        | `groups`                  | the unique set of position groups                                                                                                           |
-        | `secondary_groups`        | the unique set of secondary position groups                                                                                                 |
-        | `dev_traits`              | the unique set of dev traits. An index column named `order` is assigned and will be used to order the stacking of the stacked bar chart     |
-        | `position_dev_combos`     | dataframe of the cross join (cartesian product) of all positions with all dev traits                                                        |
-        | `dev_per_position_pre`    | all dev traits per position. This is the minimal set - does not include rows where there are no players of a given position-dev combination |
-        | `dev_per_position`        | all dev traits per position including rows where there are no players of a given position-dev combination                                   |
-        | `star_elite_per_position` | all star and elite dev traits per position including rows where there are no players of a given position-star or position-elite combination |
+        ### Shared Dataframes
+        | dataframe          | description                                                                                                                              |
+        |:-------------------|:-----------------------------------------------------------------------------------------------------------------------------------------|
+        | `positions`        | the unique set of positions                                                                                                              |
+        | `groups`           | the unique set of position groups                                                                                                        |
+        | `secondary_groups` | the unique set of secondary position groups                                                                                              |
+        | `dev_traits`       | the unique set of dev traits. An index column named `order` is assigned and will be used to order the stacking of the stacked bar charts |
         """
     )
     return
 
 
 @app.cell
-def _(create_dataframe_md, dev_trait_enum, mo, pl, team):
-    # Create a dataframe of the unique positions.
+def _(dev_trait_enum, pl, team):
     positions = team.select("position").unique()
-
-    # Create a dataframe of the unique position groups.
     groups = team.select("group").unique()
-
-    # Create a dataframe of the unique secondary position groups.
     secondary_groups = team.select("secondary_group").unique()
 
-    # Create a dataframe of just the dev traits with an index column named
-    # `order` to be used as the order for the stacked bar chart.
     dev_traits = pl.DataFrame(
         {"dev_trait": ["normal", "impact", "star", "elite"]},
         schema={"dev_trait": dev_trait_enum},
     ).with_row_index("order")
-
-    # Create the cartesian product of positions and dev traits.
-    position_dev_combos = positions.join(dev_traits, how="cross")
-
-    # all dev traits per position, a minimal set
-    dev_per_position_pre = (
-        team.group_by(["position", "dev_trait"])
-        .len("count")
-        .sort(["position", "dev_trait"])
-    )
-
-    # all dev traits per position, the minimal set (doesn't have rows with
-    # 0 for positions that don't have those dev traits).
-    dev_per_position = position_dev_combos.join(
-        dev_per_position_pre, how="left", on=["position", "dev_trait"]
-    ).fill_null(0)
-
-    # star and elite dev traits per position.
-    star_elite_per_position = dev_per_position.filter(
-        (pl.col("dev_trait") == "elite") | (pl.col("dev_trait") == "star")
-    )
-
-    #-----------------------------------------
-    # Create the cartesian product of groups and dev traits.
-    group_dev_combos = groups.join(dev_traits, how="cross")
-
-    # all dev traits per group, a minimal set
-    dev_per_group_pre = (
-        team.group_by(["group", "dev_trait"])
-        .len("count")
-        .sort(["group", "dev_trait"])
-    )
-
-    # all dev traits per group, the minimal set (doesn't have rows with
-    # 0 for groups that don't have those dev traits).
-    dev_per_group = group_dev_combos.join(
-        dev_per_group_pre, how="left", on=["group", "dev_trait"]
-    ).fill_null(0)
-
-    # star and elite dev traits per group.
-    star_elite_per_group = dev_per_group.filter(
-        (pl.col("dev_trait") == "elite") | (pl.col("dev_trait") == "star")
-    )
-
-    #-------------------------------------------------
-
-
-    # Vertical stack of all the dataframes created in this cell.
-    mo.vstack(
-        [
-            create_dataframe_md("positions"),
-            positions,
-            create_dataframe_md("groups"),
-            groups,
-            create_dataframe_md("secondary_groups"),
-            secondary_groups,
-            create_dataframe_md("dev_traits"),
-            dev_traits,
-            create_dataframe_md("position_dev_combos"),
-            position_dev_combos,
-            create_dataframe_md("dev_per_position_pre"),
-            dev_per_position_pre,
-            create_dataframe_md("dev_per_position"),
-            dev_per_position,
-            create_dataframe_md("star_elite_per_position"),
-            star_elite_per_position,
-            create_dataframe_md("group_dev_combos"),
-            group_dev_combos,
-            create_dataframe_md("dev_per_group_pre"),
-            dev_per_group_pre,
-            create_dataframe_md("dev_per_group"),
-            dev_per_group,
-            create_dataframe_md("star_elite_per_group"),
-            star_elite_per_group,
-        ]
-    )
-    return (
-        dev_per_group,
-        dev_per_group_pre,
-        dev_per_position,
-        dev_per_position_pre,
-        dev_traits,
-        group_dev_combos,
-        groups,
-        position_dev_combos,
-        positions,
-        secondary_groups,
-        star_elite_per_group,
-        star_elite_per_position,
-    )
-
-
-@app.cell
-def _(
-    alt,
-    anchor,
-    data_path,
-    dev_per_position,
-    font_size,
-    mo,
-    positions,
-    red_1,
-    red_2,
-    red_3,
-    red_4,
-    season,
-    star_elite_per_position,
-    width,
-):
-    # define shared plot properties.
-    _x_axis = alt.X(
-        "position:N",
-        title="Position",
-        axis=alt.Axis(labelAngle=0),
-        sort=positions["position"].to_list(),
-    )
-    _y_axis_title = "Players"
-    _legend_title = "Dev. Trait"
-
-    # dev traits per position chart.
-    _dev_trait_chart = (
-        alt.Chart(dev_per_position)
-        .mark_bar()
-        .encode(
-            x=_x_axis,
-            y=alt.Y(
-                "count:Q",
-                title=_y_axis_title,
-                axis=alt.Axis(tickCount=12, format="d"),
-                scale=alt.Scale(domain=[0, 11]),
-            ),
-            color=alt.Color(
-                "dev_trait:N",
-                title=_legend_title,
-                scale=alt.Scale(
-                    domain=["elite", "star", "impact", "normal"],
-                    range=[red_1, red_2, red_3, red_4],
-                ),
-            ),
-            order="order:O",
-        )
-        .properties(
-            width=width,
-            height=350,
-            title={
-                "text": f"{season.value} Player Development Traits per Position",
-                "fontSize": font_size,
-                "anchor": anchor,
-            },
-        )
-    )
-
-    # "star" and "elite" players per position chart.
-    _star_elite_chart = (
-        alt.Chart(star_elite_per_position)
-        .mark_bar()
-        .encode(
-            x=_x_axis,
-            y=alt.Y(
-                "count:Q",
-                title=_y_axis_title,
-                axis=alt.Axis(tickCount=8, format="d"),
-                scale=alt.Scale(domain=[0, 7]),
-            ),
-            color=alt.Color(
-                "dev_trait:N",
-                title=_legend_title,
-                scale=alt.Scale(
-                    domain=["elite", "star"],
-                    range=[red_1, red_2],
-                ),
-            ),
-            order="order:O",
-        )
-        .properties(
-            width=width,
-            height=200,
-            title={
-                "text": f"{season.value} Star and Elite Players per Position",
-                "fontSize": font_size,
-                "anchor": anchor,
-            },
-        )
-    )
-
-    # Save the charts as images.
-    _dev_trait_chart.save(
-        data_path / "images" / f"{season.value}_dev_per_position.png", scale_factor=2.0
-    )
-    _star_elite_chart.save(
-        data_path / "images" / f"{season.value}_star_elite_per_position.png",
-        scale_factor=2.0,
-    )
-
-    # Stack the charts for viewing.
-    mo.vstack([mo.ui.altair_chart(_dev_trait_chart), mo.ui.altair_chart(_star_elite_chart)])
-    return
-
-
-@app.cell
-def _(
-    alt,
-    anchor,
-    data_path,
-    dev_per_group,
-    font_size,
-    groups,
-    mo,
-    red_1,
-    red_2,
-    red_3,
-    red_4,
-    season,
-    star_elite_per_group,
-    width,
-):
-    # define shared plot properties.
-    _x_axis = alt.X(
-        "group:N",
-        title="Group",
-        axis=alt.Axis(labelAngle=0),
-        sort=groups["group"].to_list(),
-    )
-    _y_axis_title = "Players"
-    _legend_title = "Dev. Trait"
-
-    # dev traits per group chart.
-    _dev_trait_chart = (
-        alt.Chart(dev_per_group)
-        .mark_bar()
-        .encode(
-            x=_x_axis,
-            y=alt.Y(
-                "count:Q",
-                title=_y_axis_title,
-                axis=alt.Axis(tickCount=12, format="d"),
-                scale=alt.Scale(domain=[0, 11]),
-            ),
-            color=alt.Color(
-                "dev_trait:N",
-                title=_legend_title,
-                scale=alt.Scale(
-                    domain=["elite", "star", "impact", "normal"],
-                    range=[red_1, red_2, red_3, red_4],
-                ),
-            ),
-            order="order:O",
-        )
-        .properties(
-            width=width,
-            height=350,
-            title={
-                "text": f"{season.value} Player Development Traits per Group",
-                "fontSize": font_size,
-                "anchor": anchor,
-            },
-        )
-    )
-
-    # "star" and "elite" players per group chart.
-    _star_elite_chart = (
-        alt.Chart(star_elite_per_group)
-        .mark_bar()
-        .encode(
-            x=_x_axis,
-            y=alt.Y(
-                "count:Q",
-                title=_y_axis_title,
-                axis=alt.Axis(tickCount=8, format="d"),
-                scale=alt.Scale(domain=[0, 7]),
-            ),
-            color=alt.Color(
-                "dev_trait:N",
-                title=_legend_title,
-                scale=alt.Scale(
-                    domain=["elite", "star"],
-                    range=[red_1, red_2],
-                ),
-            ),
-            order="order:O",
-        )
-        .properties(
-            width=width,
-            height=200,
-            title={
-                "text": f"{season.value} Star and Elite Players per Group",
-                "fontSize": font_size,
-                "anchor": anchor,
-            },
-        )
-    )
-
-    # Save the charts as images.
-    _dev_trait_chart.save(
-        data_path / "images" / f"{season.value}_dev_per_group.png", scale_factor=2.0
-    )
-    _star_elite_chart.save(
-        data_path / "images" / f"{season.value}_star_elite_per_group.png",
-        scale_factor=2.0,
-    )
-
-    # Stack the charts for viewing.
-    mo.vstack([mo.ui.altair_chart(_dev_trait_chart), mo.ui.altair_chart(_star_elite_chart)])
-    return
-
-
-@app.cell
-def _(pl, team):
-    team.filter(pl.col("group") == "DE")
-    return
+    return dev_traits, groups, positions, secondary_groups
 
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(r"""### Class Distribution""")
+    mo.md(r"""### Player Class Distribution""")
     return
 
 
 @app.cell
 def _(class_enum, pl, team):
     # Create the order that will be used to ensure class order is correct.
-    player_class_order = pl.DataFrame(
+    _player_class_order = pl.DataFrame(
         {"class": ["FR", "SO", "JR", "SR"]}, schema={"class": class_enum}
     ).with_row_index("order")
 
@@ -431,11 +104,11 @@ def _(class_enum, pl, team):
     player_classes = team.group_by(["class", "red_shirt"]).len("count")
 
     # Enforce the class order in the `player_classes` dataframe.
-    player_classes = player_classes.join(player_class_order, on="class", how="left").sort(
+    player_classes = player_classes.join(_player_class_order, on="class", how="left").sort(
         ["order", "red_shirt"]
     )
     player_classes
-    return player_class_order, player_classes
+    return (player_classes,)
 
 
 @app.cell(hide_code=True)
@@ -493,20 +166,77 @@ def _(
     return
 
 
-@app.cell
-def _(dev_traits, team):
-    dev_pipeline = team.group_by(["position", "class", "dev_trait"]).len("count")
-    dev_pipeline = dev_pipeline.join(dev_traits, how="left", on="dev_trait")
-    dev_pipeline
-    return (dev_pipeline,)
-
-
 @app.cell(hide_code=True)
+def _(mo):
+    mo.md(
+        r"""
+        ### Dev Traits per Position
+        | dataframe                   | description                                                                                                                                 |
+        |:--------------------------  |:--------------------------------------------------------------------------------------------------------------------------------------------|
+        | `_position_dev_combos`      | dataframe of the cross join (cartesian product) of all positions with all dev traits                                                        |
+        | `dev_per_position`          | all dev traits per position including rows where there are no players of a given position-dev combination                                   |
+        | `star_elite_per_position`   | all star and elite dev traits per position including rows where there are no players of a given position-star or position-elite combination |
+        | `dev_per_position_pipeline` | all dev traits per position per class                                                                                                       |
+        """
+    )
+    return
+
+
+@app.cell
+def _(create_dataframe_md, dev_traits, mo, pl, positions, team):
+    # Create the cartesian product of positions and dev traits.
+    _position_dev_combos = positions.join(dev_traits, how="cross")
+
+    # Minimal set of dev traits per position (does not include dev trait and position combos that have a count of 0).
+    dev_per_position = (
+        team.group_by(["position", "dev_trait"])
+        .len("count")
+        .sort(["position", "dev_trait"])
+    )
+
+    # Maximal set of dev traits per position (includes dev trait and position combos that have a count of 0).
+    dev_per_position = _position_dev_combos.join(
+        dev_per_position, how="left", on=["position", "dev_trait"]
+    ).fill_null(0)
+
+    star_elite_per_position = dev_per_position.filter(
+        (pl.col("dev_trait") == "elite") | (pl.col("dev_trait") == "star")
+    )
+
+    dev_per_position_pipeline = team.group_by(["position", "class", "dev_trait"]).len(
+        "count"
+    )
+    dev_per_position_pipeline = dev_per_position_pipeline.join(
+        dev_traits, how="left", on="dev_trait"
+    )
+
+    # Vertical stack of all the dataframes created in this cell.
+    mo.vstack(
+        [
+            create_dataframe_md("_position_dev_combos"),
+            _position_dev_combos,
+            create_dataframe_md("dev_per_position"),
+            dev_per_position,
+            create_dataframe_md("star_elite_per_position"),
+            star_elite_per_position,
+            create_dataframe_md("dev_per_position_pipeline"),
+            dev_per_position_pipeline,
+        ]
+    )
+    return (
+        dev_per_position,
+        dev_per_position_pipeline,
+        star_elite_per_position,
+    )
+
+
+@app.cell
 def _(
     alt,
     anchor,
     data_path,
-    dev_pipeline,
+    dev_per_position,
+    dev_per_position_pipeline,
     font_size,
     mo,
     positions,
@@ -515,12 +245,91 @@ def _(
     red_3,
     red_4,
     season,
+    star_elite_per_position,
+    width,
 ):
-    _dev_pipeline_chart = (
-        alt.Chart(dev_pipeline)
+    # define shared plot properties.
+    _x_axis = alt.X(
+        "position:N",
+        title="Position",
+        axis=alt.Axis(labelAngle=0),
+        sort=positions["position"].to_list(),
+    )
+    _y_axis_title = "Players"
+    _legend_title = "Development Trait"
+
+    # -------------------------------------------------------------------------------
+    _dev_trait_chart = (
+        alt.Chart(dev_per_position)
         .mark_bar()
         .encode(
-            x=alt.X("position:N", title="Position", sort=positions["position"].to_list()),
+            x=_x_axis,
+            y=alt.Y(
+                "count:Q",
+                title=_y_axis_title,
+                axis=alt.Axis(tickCount=12, format="d"),
+                scale=alt.Scale(domain=[0, 11]),
+            ),
+            color=alt.Color(
+                "dev_trait:N",
+                title=_legend_title,
+                scale=alt.Scale(
+                    domain=["elite", "star", "impact", "normal"],
+                    range=[red_1, red_2, red_3, red_4],
+                ),
+            ),
+            order="order:O",
+        )
+        .properties(
+            width=width,
+            height=350,
+            title={
+                "text": f"{season.value} Player Development Traits per Position",
+                "fontSize": font_size,
+                "anchor": anchor,
+            },
+        )
+    )
+
+    # -------------------------------------------------------------------------------
+    _star_elite_chart = (
+        alt.Chart(star_elite_per_position)
+        .mark_bar()
+        .encode(
+            x=_x_axis,
+            y=alt.Y(
+                "count:Q",
+                title=_y_axis_title,
+                axis=alt.Axis(tickCount=8, format="d"),
+                scale=alt.Scale(domain=[0, 7]),
+            ),
+            color=alt.Color(
+                "dev_trait:N",
+                title=_legend_title,
+                scale=alt.Scale(
+                    domain=["elite", "star"],
+                    range=[red_1, red_2],
+                ),
+            ),
+            order="order:O",
+        )
+        .properties(
+            width=width,
+            height=200,
+            title={
+                "text": f"{season.value} Star and Elite Players per Position",
+                "fontSize": font_size,
+                "anchor": anchor,
+            },
+        )
+    )
+
+    # -------------------------------------------------------------------------------
+    _dev_per_position_pipeline_chart = (
+        alt.Chart(dev_per_position_pipeline)
+        .mark_bar()
+        .encode(
+            x=_x_axis,
             y=alt.Y("count:Q", title="Players"),
             color=alt.Color(
                 "dev_trait:N",
@@ -537,20 +346,278 @@ def _(
         .facet(
             row=alt.Row("class:N", sort=["FR", "SO", "JR", "SR"], title="Class"),
             title={
-                "text": f"{season.value} Player Development Pipeline",
+                "text": f"{season.value} Player Development Pipeline per Position",
                 "fontSize": font_size,
                 "anchor": anchor,
             },
         )
     )
 
-    # Save the chart as an image.
-    _dev_pipeline_chart.save(
-        data_path / "images" / f"{season.value}_dev_pipeline.png", scale_factor=2.0
+    # Save the charts as images.
+    _dev_trait_chart.save(
+        data_path / "images" / f"{season.value}_dev_per_position.png", scale_factor=2.0
+    )
+    _star_elite_chart.save(
+        data_path / "images" / f"{season.value}_star_elite_per_position.png",
+        scale_factor=2.0,
+    )
+    _dev_per_position_pipeline_chart.save(
+        data_path / "images" / f"{season.value}_dev_per_position_pipeline.png",
+        scale_factor=2.0,
     )
 
-    mo.ui.altair_chart(_dev_pipeline_chart)
+    # Stack the charts for viewing.
+    mo.vstack(
+        [
+            mo.ui.altair_chart(_dev_trait_chart),
+            mo.ui.altair_chart(_star_elite_chart),
+            mo.ui.altair_chart(_dev_per_position_pipeline_chart),
+        ],
+        align="center",
+        gap=3.0,
+    )
     return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(
+        """
+        ### Dev Traits per Group
+        | dataframe              | description                                                                                                                           |
+        |:-----------------------|:--------------------------------------------------------------------------------------------------------------------------------------|
+        | `_group_dev_combos`    | dataframe of the cross join (cartesian product) of all groups with all dev traits                                                     |
+        | `_dev_per_group_pre`   | all dev traits per group. This is the minimal set - does not include rows where there are no players of a given group-dev combination |
+        | `dev_per_group`        | all dev traits per group including rows where there are no players of a given group-dev combination                                   |
+        | `star_elite_per_group` | all star and elite dev traits per group including rows where there are no players of a given group-star or group-elite combination    |
+        """
+    )
+    return
+
+
+@app.cell
+def _(create_dataframe_md, dev_traits, groups, mo, pl, team):
+    # Create the cartesian product of groups and dev traits.
+    _group_dev_combos = groups.join(dev_traits, how="cross")
+
+    # Minimal set of dev traits per group (does not include dev trait and group combos that have a count of 0).
+    dev_per_group = (
+        team.group_by(["group", "dev_trait"]).len("count").sort(["group", "dev_trait"])
+    )
+
+    # Maximal set of dev traits per group (includes dev trait and group combos that have a count of 0).
+    dev_per_group = _group_dev_combos.join(
+        dev_per_group, how="left", on=["group", "dev_trait"]
+    ).fill_null(0)
+
+    star_elite_per_group = dev_per_group.filter(
+        (pl.col("dev_trait") == "elite") | (pl.col("dev_trait") == "star")
+    )
+
+    dev_per_group_pipeline = team.group_by(["group", "class", "dev_trait"]).len("count")
+    dev_per_group_pipeline = dev_per_group_pipeline.join(
+        dev_traits, how="left", on="dev_trait"
+    )
+
+    # Vertical stack of all the dataframes created in this cell.
+    mo.vstack(
+        [
+            create_dataframe_md("_group_dev_combos"),
+            _group_dev_combos,
+            create_dataframe_md("dev_per_group"),
+            dev_per_group,
+            create_dataframe_md("star_elite_per_group"),
+            star_elite_per_group,
+            create_dataframe_md("dev_per_group_pipeline"),
+            dev_per_group_pipeline,
+        ]
+    )
+    return dev_per_group, dev_per_group_pipeline, star_elite_per_group
+
+
+@app.cell
+def _(
+    alt,
+    anchor,
+    data_path,
+    dev_per_group,
+    dev_per_group_pipeline,
+    font_size,
+    groups,
+    mo,
+    red_1,
+    red_2,
+    red_3,
+    red_4,
+    season,
+    star_elite_per_group,
+    width,
+):
+    # define shared plot properties.
+    _x_axis = alt.X(
+        "group:N",
+        title="Group",
+        axis=alt.Axis(labelAngle=0),
+        sort=groups["group"].to_list(),
+    )
+    _y_axis_title = "Players"
+    _legend_title = "Development Trait"
+
+    # -------------------------------------------------------------------------------
+    _dev_trait_chart = (
+        alt.Chart(dev_per_group)
+        .mark_bar()
+        .encode(
+            x=_x_axis,
+            y=alt.Y(
+                "count:Q",
+                title=_y_axis_title,
+                axis=alt.Axis(tickCount=12, format="d"),
+                scale=alt.Scale(domain=[0, 11]),
+            ),
+            color=alt.Color(
+                "dev_trait:N",
+                title=_legend_title,
+                scale=alt.Scale(
+                    domain=["elite", "star", "impact", "normal"],
+                    range=[red_1, red_2, red_3, red_4],
+                ),
+            ),
+            order="order:O",
+        )
+        .properties(
+            width=width,
+            height=350,
+            title={
+                "text": f"{season.value} Player Development Traits per Group",
+                "fontSize": font_size,
+                "anchor": anchor,
+            },
+        )
+    )
+
+    # -------------------------------------------------------------------------------
+    _star_elite_chart = (
+        alt.Chart(star_elite_per_group)
+        .mark_bar()
+        .encode(
+            x=_x_axis,
+            y=alt.Y(
+                "count:Q",
+                title=_y_axis_title,
+                axis=alt.Axis(tickCount=8, format="d"),
+                scale=alt.Scale(domain=[0, 7]),
+            ),
+            color=alt.Color(
+                "dev_trait:N",
+                title=_legend_title,
+                scale=alt.Scale(
+                    domain=["elite", "star"],
+                    range=[red_1, red_2],
+                ),
+            ),
+            order="order:O",
+        )
+        .properties(
+            width=width,
+            height=200,
+            title={
+                "text": f"{season.value} Star and Elite Players per Group",
+                "fontSize": font_size,
+                "anchor": anchor,
+            },
+        )
+    )
+
+    # -------------------------------------------------------------------------------
+    _dev_per_group_pipeline_chart = (
+        alt.Chart(dev_per_group_pipeline)
+        .mark_bar()
+        .encode(
+            x=_x_axis,
+            y=alt.Y("count:Q", title="Players"),
+            color=alt.Color(
+                "dev_trait:N",
+                title="Development Trait",
+                scale=alt.Scale(
+                    domain=["elite", "star", "impact", "normal"],
+                    range=[red_1, red_2, red_3, red_4],
+                ),
+            ),
+            order="order:O",
+            tooltip=["group", "class", "dev_trait", "count"],
+        )
+        .properties(width=500, height=100)
+        .facet(
+            row=alt.Row("class:N", sort=["FR", "SO", "JR", "SR"], title="Class"),
+            title={
+                "text": f"{season.value} Player Development Pipeline per Group",
+                "fontSize": font_size,
+                "anchor": anchor,
+            },
+        )
+    )
+
+    # Save the charts as images.
+    _dev_trait_chart.save(
+        data_path / "images" / f"{season.value}_dev_per_group.png", scale_factor=2.0
+    )
+    _star_elite_chart.save(
+        data_path / "images" / f"{season.value}_star_elite_per_group.png",
+        scale_factor=2.0,
+    )
+    _dev_per_group_pipeline_chart.save(
+        data_path / "images" / f"{season.value}_dev_per_group_pipeline.png",
+        scale_factor=2.0,
+    )
+
+    # Stack the charts for viewing.
+    mo.vstack(
+        [
+            mo.ui.altair_chart(_dev_trait_chart),
+            mo.ui.altair_chart(_star_elite_chart),
+            mo.ui.altair_chart(_dev_per_group_pipeline_chart),
+        ],
+        align="center",
+        gap=3.0,
+    )
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""### Possible Non-Senior Players Leaving""")
+    return
+
+
+@app.cell
+def _(pl, team):
+    team.filter((pl.col("2028_ovr") >= 87) & (pl.col("class") != "SR")).sort(
+        "2028_ovr", descending=True
+    )
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(
+        r"""
+        ### Young Player Quality
+        - young player - a freshman or sophomore including redshirted players
+        - the average overall of the young players at each position group is used to assess quality
+        """
+    )
+    return
+
+
+@app.cell
+def _(pl, team):
+    young_players = team.filter((pl.col("class") == "FR") | (pl.col("class") == "SO"))
+
+    young_players.group_by("group").mean().select(
+        pl.col("group"), pl.col("2028_ovr").round(0).alias("2028_avg_ovr")
+    ).sort("2028_avg_ovr")
+    return (young_players,)
 
 
 @app.cell(hide_code=True)
@@ -670,6 +737,10 @@ def _(mo):
 
 @app.cell
 def _(find_project_path):
+    # Data directory path.
+    _project_path = find_project_path("cfb-analysis")
+    data_path = _project_path / "data"
+
     # Shared color scheme.
     red_1 = "#991b1b"
     red_2 = "#ef4444"
@@ -680,10 +751,6 @@ def _(find_project_path):
     width = 600
     font_size = 16
     anchor = "middle"
-
-    # Data directory path.
-    _project_path = find_project_path("cfb-analysis")
-    data_path = _project_path / "data"
     return anchor, data_path, font_size, red_1, red_2, red_3, red_4, width
 
 
@@ -737,15 +804,10 @@ def _(mo):
     def create_dataframe_md(frame_name: str) -> mo._output.md._md:
         return mo.md(
             f"""<br>
-            ### *`{frame_name}`*
+            *`{frame_name}`*
         """
         )
     return (create_dataframe_md,)
-
-
-@app.cell
-def _():
-    return
 
 
 if __name__ == "__main__":
