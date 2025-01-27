@@ -1,6 +1,6 @@
 import marimo
 
-__generated_with = "0.10.13"
+__generated_with = "0.10.17"
 app = marimo.App(
     width="medium",
     css_file="C:\\Users\\cdpet\\Documents\\Post School Coursework\\dev-materials\\configs\\marimo\\theme\\custom-theme.css",
@@ -15,45 +15,64 @@ def _(mo):
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(r"""## Read Roster Data""")
+    mo.md(
+        r"""
+        ## Read Roster Data
+        ### Choose Team and Season
+        """
+    )
     return
 
 
 @app.cell(hide_code=True)
 def _(mo):
-    # Current dynasty season.
+    # Team being analyzed.
+    _teams = {
+        "Stanford": "stanford",
+        # "Fresno State": "fresno_state",
+        # "San Diego State": "san_diego_state",
+    }
+    team_dropdown = mo.ui.dropdown(options=_teams, value="Stanford", label="Team")
+
+    # Season for analysis.
     _seasons = ["2027", "2028"]
 
-    season = mo.ui.dropdown(options=_seasons, value="2028", label="Season")
-    season
-    return (season,)
+    season_dropdown = mo.ui.dropdown(options=_seasons, value="2028", label="Season")
+
+    mo.hstack([team_dropdown, season_dropdown], justify="start")
+    return season_dropdown, team_dropdown
 
 
-@app.cell(hide_code=True)
-def _(data_path, pl, season):
-    # CSV name.
-    _csv_name = f"{season.value}_team.csv"
+@app.cell
+def _(data_path, pl, season_dropdown, team_dropdown):
+    _roster_file_name = f"roster_{team_dropdown.value}.xlsx"
+    _roster_file_name
 
-    # Create the `team` dataframe from the
-    team = pl.read_csv(data_path / "datasets" / _csv_name)
-
-    class_enum = pl.Enum(["SR", "JR", "SO", "FR"])
+    class_enum = pl.Enum(["FR", "SO", "JR", "SR"])
     team_enum = pl.Enum(["OFF", "DEF", "ST"])
     dev_trait_enum = pl.Enum(["normal", "impact", "star", "elite"])
 
-    team = team.cast(
-        {
-            "class": class_enum,
-            "position": pl.Categorical,
-            "group": pl.Categorical,
-            "secondary_group": pl.Categorical,
-            "team": team_enum,
-            "archetype": pl.Categorical,
-            "dev_trait": dev_trait_enum,
-        }
+    # Set up the schema overrides for the columns that need it. The `overall` column needs
+    # an override because `polars` does not infer the column as an integer for the `2027`
+    # season since all the values are #N/A in Excel.
+    _schema_overrides = {
+        "class": class_enum,
+        "position": pl.Categorical,
+        "group": pl.Categorical,
+        "secondary_group": pl.Categorical,
+        "team": team_enum,
+        "archetype": pl.Categorical,
+        "dev_trait": dev_trait_enum,
+        "overall": pl.UInt8,
+    }
+
+    # Create the `roster` dataframe from the Excel file.
+    roster = pl.read_excel(
+        data_path / "datasets" / _roster_file_name,
+        sheet_name=season_dropdown.value,
+        schema_overrides=_schema_overrides,
     )
-    team
-    return class_enum, dev_trait_enum, team, team_enum
+    return class_enum, dev_trait_enum, roster, team_enum
 
 
 @app.cell(hide_code=True)
@@ -74,10 +93,10 @@ def _(mo):
 
 
 @app.cell
-def _(dev_trait_enum, pl, team):
-    positions = team.select("position").unique()
-    groups = team.select("group").unique()
-    secondary_groups = team.select("secondary_group").unique()
+def _(dev_trait_enum, pl, roster):
+    positions = roster.select("position").unique()
+    groups = roster.select("group").unique()
+    secondary_groups = roster.select("secondary_group").unique()
 
     dev_traits = pl.DataFrame(
         {"dev_trait": ["normal", "impact", "star", "elite"]},
@@ -92,8 +111,8 @@ def _(mo):
     return
 
 
-@app.cell
-def _(class_enum, pl, team):
+@app.cell(hide_code=True)
+def _(class_enum, pl, roster):
     # Create the order that will be used to ensure class order is correct.
     _player_class_order = pl.DataFrame(
         {"class": ["FR", "SO", "JR", "SR"]}, schema={"class": class_enum}
@@ -101,7 +120,7 @@ def _(class_enum, pl, team):
 
     # Include grouping by `red_shirt` in order to capture the distribution
     # of red shirts for each class.
-    player_classes = team.group_by(["class", "red_shirt"]).len("count")
+    player_classes = roster.group_by(["class", "red_shirt"]).len("count")
 
     # Enforce the class order in the `player_classes` dataframe.
     player_classes = player_classes.join(_player_class_order, on="class", how="left").sort(
@@ -121,7 +140,7 @@ def _(
     player_classes,
     red_1,
     red_2,
-    season,
+    season_dropdown,
 ):
     # player classes chart.
     _player_classes_chart = (
@@ -150,7 +169,7 @@ def _(
             width=250,
             height=250,
             title={
-                "text": f"{season.value} Player Class Distribution",
+                "text": f"{season_dropdown.value} Player Class Distribution",
                 "fontSize": font_size,
                 "anchor": anchor,
             },
@@ -159,7 +178,8 @@ def _(
 
     # Save the chart as an image.
     _player_classes_chart.save(
-        data_path / "images" / f"{season.value}_player_classes.png", scale_factor=2.0
+        data_path / "images" / f"{season_dropdown.value}_player_classes.png",
+        scale_factor=2.0,
     )
 
     mo.ui.altair_chart(_player_classes_chart)
@@ -182,14 +202,14 @@ def _(mo):
     return
 
 
-@app.cell
-def _(create_dataframe_md, dev_traits, mo, pl, positions, team):
+@app.cell(hide_code=True)
+def _(create_dataframe_md, dev_traits, mo, pl, positions, roster):
     # Create the cartesian product of positions and dev traits.
     _position_dev_combos = positions.join(dev_traits, how="cross")
 
     # Minimal set of dev traits per position (does not include dev trait and position combos that have a count of 0).
     dev_per_position = (
-        team.group_by(["position", "dev_trait"])
+        roster.group_by(["position", "dev_trait"])
         .len("count")
         .sort(["position", "dev_trait"])
     )
@@ -203,7 +223,7 @@ def _(create_dataframe_md, dev_traits, mo, pl, positions, team):
         (pl.col("dev_trait") == "elite") | (pl.col("dev_trait") == "star")
     )
 
-    dev_per_position_pipeline = team.group_by(["position", "class", "dev_trait"]).len(
+    dev_per_position_pipeline = roster.group_by(["position", "class", "dev_trait"]).len(
         "count"
     )
     dev_per_position_pipeline = dev_per_position_pipeline.join(
@@ -230,7 +250,7 @@ def _(create_dataframe_md, dev_traits, mo, pl, positions, team):
     )
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(
     alt,
     anchor,
@@ -244,7 +264,7 @@ def _(
     red_2,
     red_3,
     red_4,
-    season,
+    season_dropdown,
     star_elite_per_position,
     width,
 ):
@@ -284,7 +304,7 @@ def _(
             width=width,
             height=350,
             title={
-                "text": f"{season.value} Player Development Traits per Position",
+                "text": f"{season_dropdown.value} Player Development Traits per Position",
                 "fontSize": font_size,
                 "anchor": anchor,
             },
@@ -317,7 +337,7 @@ def _(
             width=width,
             height=200,
             title={
-                "text": f"{season.value} Star and Elite Players per Position",
+                "text": f"{season_dropdown.value} Star and Elite Players per Position",
                 "fontSize": font_size,
                 "anchor": anchor,
             },
@@ -346,7 +366,7 @@ def _(
         .facet(
             row=alt.Row("class:N", sort=["FR", "SO", "JR", "SR"], title="Class"),
             title={
-                "text": f"{season.value} Player Development Pipeline per Position",
+                "text": f"{season_dropdown.value} Player Development Pipeline per Position",
                 "fontSize": font_size,
                 "anchor": anchor,
             },
@@ -355,14 +375,15 @@ def _(
 
     # Save the charts as images.
     _dev_trait_chart.save(
-        data_path / "images" / f"{season.value}_dev_per_position.png", scale_factor=2.0
+        data_path / "images" / f"{season_dropdown.value}_dev_per_position.png",
+        scale_factor=2.0,
     )
     _star_elite_chart.save(
-        data_path / "images" / f"{season.value}_star_elite_per_position.png",
+        data_path / "images" / f"{season_dropdown.value}_star_elite_per_position.png",
         scale_factor=2.0,
     )
     _dev_per_position_pipeline_chart.save(
-        data_path / "images" / f"{season.value}_dev_per_position_pipeline.png",
+        data_path / "images" / f"{season_dropdown.value}_dev_per_position_pipeline.png",
         scale_factor=2.0,
     )
 
@@ -395,14 +416,14 @@ def _(mo):
     return
 
 
-@app.cell
-def _(create_dataframe_md, dev_traits, groups, mo, pl, team):
+@app.cell(hide_code=True)
+def _(create_dataframe_md, dev_traits, groups, mo, pl, roster):
     # Create the cartesian product of groups and dev traits.
     _group_dev_combos = groups.join(dev_traits, how="cross")
 
     # Minimal set of dev traits per group (does not include dev trait and group combos that have a count of 0).
     dev_per_group = (
-        team.group_by(["group", "dev_trait"]).len("count").sort(["group", "dev_trait"])
+        roster.group_by(["group", "dev_trait"]).len("count").sort(["group", "dev_trait"])
     )
 
     # Maximal set of dev traits per group (includes dev trait and group combos that have a count of 0).
@@ -414,7 +435,7 @@ def _(create_dataframe_md, dev_traits, groups, mo, pl, team):
         (pl.col("dev_trait") == "elite") | (pl.col("dev_trait") == "star")
     )
 
-    dev_per_group_pipeline = team.group_by(["group", "class", "dev_trait"]).len("count")
+    dev_per_group_pipeline = roster.group_by(["group", "class", "dev_trait"]).len("count")
     dev_per_group_pipeline = dev_per_group_pipeline.join(
         dev_traits, how="left", on="dev_trait"
     )
@@ -435,7 +456,7 @@ def _(create_dataframe_md, dev_traits, groups, mo, pl, team):
     return dev_per_group, dev_per_group_pipeline, star_elite_per_group
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(
     alt,
     anchor,
@@ -449,7 +470,7 @@ def _(
     red_2,
     red_3,
     red_4,
-    season,
+    season_dropdown,
     star_elite_per_group,
     width,
 ):
@@ -489,7 +510,7 @@ def _(
             width=width,
             height=350,
             title={
-                "text": f"{season.value} Player Development Traits per Group",
+                "text": f"{season_dropdown.value} Player Development Traits per Group",
                 "fontSize": font_size,
                 "anchor": anchor,
             },
@@ -522,7 +543,7 @@ def _(
             width=width,
             height=200,
             title={
-                "text": f"{season.value} Star and Elite Players per Group",
+                "text": f"{season_dropdown.value} Star and Elite Players per Group",
                 "fontSize": font_size,
                 "anchor": anchor,
             },
@@ -551,7 +572,7 @@ def _(
         .facet(
             row=alt.Row("class:N", sort=["FR", "SO", "JR", "SR"], title="Class"),
             title={
-                "text": f"{season.value} Player Development Pipeline per Group",
+                "text": f"{season_dropdown.value} Player Development Pipeline per Group",
                 "fontSize": font_size,
                 "anchor": anchor,
             },
@@ -560,14 +581,15 @@ def _(
 
     # Save the charts as images.
     _dev_trait_chart.save(
-        data_path / "images" / f"{season.value}_dev_per_group.png", scale_factor=2.0
+        data_path / "images" / f"{season_dropdown.value}_dev_per_group.png",
+        scale_factor=2.0,
     )
     _star_elite_chart.save(
-        data_path / "images" / f"{season.value}_star_elite_per_group.png",
+        data_path / "images" / f"{season_dropdown.value}_star_elite_per_group.png",
         scale_factor=2.0,
     )
     _dev_per_group_pipeline_chart.save(
-        data_path / "images" / f"{season.value}_dev_per_group_pipeline.png",
+        data_path / "images" / f"{season_dropdown.value}_dev_per_group_pipeline.png",
         scale_factor=2.0,
     )
 
@@ -591,9 +613,9 @@ def _(mo):
 
 
 @app.cell
-def _(pl, team):
-    team.filter((pl.col("2028_ovr") >= 87) & (pl.col("class") != "SR")).sort(
-        "2028_ovr", descending=True
+def _(pl, roster):
+    roster.filter((pl.col("overall") >= 87) & (pl.col("class") != "SR")).sort(
+        "overall", descending=True
     )
     return
 
@@ -611,13 +633,19 @@ def _(mo):
 
 
 @app.cell
-def _(pl, team):
-    young_players = team.filter((pl.col("class") == "FR") | (pl.col("class") == "SO"))
+def _(pl, roster):
+    young_players = roster.filter((pl.col("class") == "FR") | (pl.col("class") == "SO"))
 
     young_players.group_by("group").mean().select(
-        pl.col("group"), pl.col("2028_ovr").round(0).alias("2028_avg_ovr")
-    ).sort("2028_avg_ovr")
+        pl.col("group"), pl.col("overall").round(0).alias("avg_overall")
+    ).sort("avg_overall")
     return (young_players,)
+
+
+@app.cell
+def _(pl, roster):
+    roster.filter(pl.col("group") == "OLB")
+    return
 
 
 @app.cell(hide_code=True)
@@ -639,17 +667,17 @@ def _(mo, positions):
 
 
 @app.cell
-def _(pl, team, team_position_dropdown):
+def _(pl, roster, team_position_dropdown):
     _team_mapping = {"Offense": "OFF", "Defense": "DEF"}
     _team_value = _team_mapping.get(team_position_dropdown.value)
     print(_team_value)
     if _team_value:
-        team_archetypes = team.filter(pl.col("team") == _team_value)
+        team_archetypes = roster.filter(pl.col("team") == _team_value)
         team_archetypes = team_archetypes.group_by(["position", "archetype"]).agg(
             pl.col("secondary_group").first(), pl.len().alias("count")
         )
     else:
-        position_archetypes = team.filter(
+        position_archetypes = roster.filter(
             pl.col("position") == team_position_dropdown.value
         )
 
@@ -673,7 +701,7 @@ def _(pl, team_archetypes):
 
 
 @app.cell
-def _(alt, anchor, db_archetypes, font_size, mo, season):
+def _(alt, anchor, db_archetypes, font_size, mo, season_dropdown):
     _base_chart = (
         alt.Chart(db_archetypes)
         .mark_bar()
@@ -686,7 +714,7 @@ def _(alt, anchor, db_archetypes, font_size, mo, season):
         .properties(
             width=400,
             title={
-                "text": f"{season.value} DB Archetypes",
+                "text": f"{season_dropdown.value} DB Archetypes",
                 "fontSize": font_size,
                 "anchor": anchor,
             },
