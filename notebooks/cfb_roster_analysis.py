@@ -35,7 +35,7 @@ def _(mo):
     team_dropdown = mo.ui.dropdown(options=_teams, value="Stanford", label="Team")
 
     # Season for analysis.
-    _seasons = ["2027", "2028"]
+    _seasons = ["2027", "2028", "2029"]
 
     season_dropdown = mo.ui.dropdown(options=_seasons, value="2028", label="Season")
 
