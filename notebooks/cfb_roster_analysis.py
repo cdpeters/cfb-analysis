@@ -15,46 +15,73 @@ def _(mo):
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(
-        r"""
-        ## Read Roster Data
-        ### Choose Team and Season
-        """
-    )
-    return
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    # Team being analyzed.
     _teams = {
-        "Stanford": "stanford",
-        # "Fresno State": "fresno_state",
+        "Fresno State": "fresno_state",
         # "San Diego State": "san_diego_state",
+        "Stanford": "stanford",
     }
-    team_dropdown = mo.ui.dropdown(options=_teams, value="Stanford", label="Team")
 
     # Season for analysis.
     _seasons = ["2027", "2028", "2029"]
 
-    season_dropdown = mo.ui.dropdown(options=_seasons, value="2028", label="Season")
+    # Form creation. The team and year of next season must be selected and then submitted prior
+    # to processing the roster file.
+    team_season_form = (
+        mo.md("""
+        ### Select **Team** and **Season** for roster analysis
 
-    mo.hstack([team_dropdown, season_dropdown], justify="start")
-    return season_dropdown, team_dropdown
+        {team_dropdown}
+
+        {season_dropdown}
+    """)
+        .batch(
+            team_dropdown=mo.ui.dropdown(options=_teams, label="Team"),
+            season_dropdown=mo.ui.dropdown(options=_seasons, label="Season"),
+        )
+        .form(bordered=False)
+    )
+    team_season_form
+    return (team_season_form,)
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""### Read Roster Data""")
+    return
 
 
 @app.cell
-def _(data_path, pl, season_dropdown, team_dropdown):
-    _roster_file_name = f"roster_{team_dropdown.value}.xlsx"
-    _roster_file_name
+def _(find_project_path, mo, pl, team_season_form):
+    # Stop execution if the form has not been submitted.
+    mo.stop(team_season_form.value is None, mo.md("**Submit the form above to continue.**"))
+
+    team = team_season_form.value["team_dropdown"]
+    season = team_season_form.value["season_dropdown"]
+
+    # Stop execution if the form has been submitted but the team and/or season
+    # has not been selected.
+    mo.stop(
+        any(x is None for x in (team, season)),
+        mo.md(
+            "**Either the team, the season, or both have not been selected. Please make sure both have been selected and then resubmit the form above to continue.**"
+        ),
+    )
+
+    # Path to the project's `data` directory.
+    _project_path = find_project_path("cfb-analysis")
+    data_path = _project_path / "data"
+
+    # Path to the roster excel file based on the team chosen for analysis.
+    _roster_file_path = data_path / "datasets" / f"roster_{team}.xlsx"
 
     class_enum = pl.Enum(["FR", "SO", "JR", "SR"])
+    # `team_enum` refers to either offense, defense, or special teams.
     team_enum = pl.Enum(["OFF", "DEF", "ST"])
     dev_trait_enum = pl.Enum(["normal", "impact", "star", "elite"])
 
-    # Set up the schema overrides for the columns that need it. The `overall` column needs
-    # an override because `polars` does not infer the column as an integer for the `2027`
-    # season since all the values are #N/A in Excel.
+    # Set up the schema overrides for the columns that need it. The `overall_start`
+    # and `overall_end` columns need an override because `polars` does not infer
+    # the column as an integer for roster years that have this data missing.
     _schema_overrides = {
         "class": class_enum,
         "position": pl.Categorical,
@@ -63,16 +90,25 @@ def _(data_path, pl, season_dropdown, team_dropdown):
         "team": team_enum,
         "archetype": pl.Categorical,
         "dev_trait": dev_trait_enum,
-        "overall": pl.UInt8,
+        "overall_start": pl.UInt8,
+        "overall_end": pl.UInt8,
     }
 
-    # Create the `roster` dataframe from the Excel file.
+    # Create the `roster` dataframe from the excel file.
     roster = pl.read_excel(
-        data_path / "datasets" / _roster_file_name,
-        sheet_name=season_dropdown.value,
+        _roster_file_path,
+        sheet_name=season,
         schema_overrides=_schema_overrides,
     )
-    return class_enum, dev_trait_enum, roster, team_enum
+    return (
+        class_enum,
+        data_path,
+        dev_trait_enum,
+        roster,
+        season,
+        team,
+        team_enum,
+    )
 
 
 @app.cell(hide_code=True)
@@ -111,7 +147,7 @@ def _(mo):
     return
 
 
-@app.cell(hide_code=True)
+@app.cell
 def _(class_enum, pl, roster):
     # Create the order that will be used to ensure class order is correct.
     _player_class_order = pl.DataFrame(
@@ -130,19 +166,20 @@ def _(class_enum, pl, roster):
     return (player_classes,)
 
 
-@app.cell(hide_code=True)
+@app.cell
 def _(
     alt,
     anchor,
+    color_1,
+    color_2,
     data_path,
-    font_size,
     mo,
     player_classes,
-    red_1,
-    red_2,
-    season_dropdown,
+    season,
+    team,
+    title_font_size,
 ):
-    # player classes chart.
+    # Player class distribution chart.
     _player_classes_chart = (
         alt.Chart(player_classes)
         .mark_bar()
@@ -159,7 +196,7 @@ def _(
                 title="Red Shirt Status",
                 scale=alt.Scale(
                     domain=[True, False],
-                    range=[red_1, red_2],
+                    range=[color_1, color_2],
                 ),
                 sort="descending",
             ),
@@ -169,8 +206,8 @@ def _(
             width=250,
             height=250,
             title={
-                "text": f"{season_dropdown.value} Player Class Distribution",
-                "fontSize": font_size,
+                "text": f"{team.replace('_', ' ').title()} {season} Player Class Distribution",
+                "fontSize": title_font_size,
                 "anchor": anchor,
             },
         )
@@ -178,7 +215,7 @@ def _(
 
     # Save the chart as an image.
     _player_classes_chart.save(
-        data_path / "images" / f"{season_dropdown.value}_player_classes.png",
+        data_path / "images" / f"player_classes_{season}_{team}.png",
         scale_factor=2.0,
     )
 
@@ -202,8 +239,8 @@ def _(mo):
     return
 
 
-@app.cell(hide_code=True)
-def _(create_dataframe_md, dev_traits, mo, pl, positions, roster):
+@app.cell
+def _(create_dataframe_markdown, dev_traits, mo, pl, positions, roster):
     # Create the cartesian product of positions and dev traits.
     _position_dev_combos = positions.join(dev_traits, how="cross")
 
@@ -220,7 +257,7 @@ def _(create_dataframe_md, dev_traits, mo, pl, positions, roster):
     ).fill_null(0)
 
     star_elite_per_position = dev_per_position.filter(
-        (pl.col("dev_trait") == "elite") | (pl.col("dev_trait") == "star")
+        pl.col("dev_trait").is_in(["elite", "star"])
     )
 
     dev_per_position_pipeline = roster.group_by(["position", "class", "dev_trait"]).len(
@@ -233,13 +270,13 @@ def _(create_dataframe_md, dev_traits, mo, pl, positions, roster):
     # Vertical stack of all the dataframes created in this cell.
     mo.vstack(
         [
-            create_dataframe_md("_position_dev_combos"),
+            create_dataframe_markdown("_position_dev_combos"),
             _position_dev_combos,
-            create_dataframe_md("dev_per_position"),
+            create_dataframe_markdown("dev_per_position"),
             dev_per_position,
-            create_dataframe_md("star_elite_per_position"),
+            create_dataframe_markdown("star_elite_per_position"),
             star_elite_per_position,
-            create_dataframe_md("dev_per_position_pipeline"),
+            create_dataframe_markdown("dev_per_position_pipeline"),
             dev_per_position_pipeline,
         ]
     )
@@ -250,25 +287,28 @@ def _(create_dataframe_md, dev_traits, mo, pl, positions, roster):
     )
 
 
-@app.cell(hide_code=True)
+@app.cell
 def _(
     alt,
     anchor,
+    color_1,
+    color_2,
+    color_3,
+    color_4,
     data_path,
     dev_per_position,
     dev_per_position_pipeline,
-    font_size,
+    dev_y_scale_max,
     mo,
     positions,
-    red_1,
-    red_2,
-    red_3,
-    red_4,
-    season_dropdown,
+    season,
     star_elite_per_position,
+    star_elite_y_scale_max,
+    team,
+    title_font_size,
     width,
 ):
-    # define shared plot properties.
+    # Define shared plot properties.
     _x_axis = alt.X(
         "position:N",
         title="Position",
@@ -279,6 +319,7 @@ def _(
     _legend_title = "Development Trait"
 
     # -------------------------------------------------------------------------------
+    # Dev traits per position chart.
     _dev_trait_chart = (
         alt.Chart(dev_per_position)
         .mark_bar()
@@ -287,15 +328,15 @@ def _(
             y=alt.Y(
                 "count:Q",
                 title=_y_axis_title,
-                axis=alt.Axis(tickCount=12, format="d"),
-                scale=alt.Scale(domain=[0, 11]),
+                axis=alt.Axis(tickCount=dev_y_scale_max + 1, format="d"),
+                scale=alt.Scale(domain=[0, dev_y_scale_max]),
             ),
             color=alt.Color(
                 "dev_trait:N",
                 title=_legend_title,
                 scale=alt.Scale(
                     domain=["elite", "star", "impact", "normal"],
-                    range=[red_1, red_2, red_3, red_4],
+                    range=[color_1, color_2, color_3, color_4],
                 ),
             ),
             order="order:O",
@@ -304,14 +345,15 @@ def _(
             width=width,
             height=350,
             title={
-                "text": f"{season_dropdown.value} Player Development Traits per Position",
-                "fontSize": font_size,
+                "text": f"{team.replace('_', ' ').title()} {season} Player Development Traits per Position",
+                "fontSize": title_font_size,
                 "anchor": anchor,
             },
         )
     )
 
     # -------------------------------------------------------------------------------
+    # Star and elite players per position chart.
     _star_elite_chart = (
         alt.Chart(star_elite_per_position)
         .mark_bar()
@@ -320,15 +362,15 @@ def _(
             y=alt.Y(
                 "count:Q",
                 title=_y_axis_title,
-                axis=alt.Axis(tickCount=8, format="d"),
-                scale=alt.Scale(domain=[0, 7]),
+                axis=alt.Axis(tickCount=star_elite_y_scale_max + 1, format="d"),
+                scale=alt.Scale(domain=[0, star_elite_y_scale_max]),
             ),
             color=alt.Color(
                 "dev_trait:N",
                 title=_legend_title,
                 scale=alt.Scale(
                     domain=["elite", "star"],
-                    range=[red_1, red_2],
+                    range=[color_1, color_2],
                 ),
             ),
             order="order:O",
@@ -337,14 +379,15 @@ def _(
             width=width,
             height=200,
             title={
-                "text": f"{season_dropdown.value} Star and Elite Players per Position",
-                "fontSize": font_size,
+                "text": f"{team.replace('_', ' ').title()} {season} Star and Elite Players per Position",
+                "fontSize": title_font_size,
                 "anchor": anchor,
             },
         )
     )
 
     # -------------------------------------------------------------------------------
+    # Player development pipeline per position chart.
     _dev_per_position_pipeline_chart = (
         alt.Chart(dev_per_position_pipeline)
         .mark_bar()
@@ -356,7 +399,7 @@ def _(
                 title="Development Trait",
                 scale=alt.Scale(
                     domain=["elite", "star", "impact", "normal"],
-                    range=[red_1, red_2, red_3, red_4],
+                    range=[color_1, color_2, color_3, color_4],
                 ),
             ),
             order="order:O",
@@ -366,8 +409,8 @@ def _(
         .facet(
             row=alt.Row("class:N", sort=["FR", "SO", "JR", "SR"], title="Class"),
             title={
-                "text": f"{season_dropdown.value} Player Development Pipeline per Position",
-                "fontSize": font_size,
+                "text": f"{team.replace('_', ' ').title()} {season} Player Development Pipeline per Position",
+                "fontSize": title_font_size,
                 "anchor": anchor,
             },
         )
@@ -375,15 +418,15 @@ def _(
 
     # Save the charts as images.
     _dev_trait_chart.save(
-        data_path / "images" / f"{season_dropdown.value}_dev_per_position.png",
+        data_path / "images" / f"dev_per_position_{season}_{team}.png",
         scale_factor=2.0,
     )
     _star_elite_chart.save(
-        data_path / "images" / f"{season_dropdown.value}_star_elite_per_position.png",
+        data_path / "images" / f"star_elite_per_position_{season}_{team}.png",
         scale_factor=2.0,
     )
     _dev_per_position_pipeline_chart.save(
-        data_path / "images" / f"{season_dropdown.value}_dev_per_position_pipeline.png",
+        data_path / "images" / f"dev_per_position_pipeline_{season}_{team}.png",
         scale_factor=2.0,
     )
 
@@ -416,8 +459,8 @@ def _(mo):
     return
 
 
-@app.cell(hide_code=True)
-def _(create_dataframe_md, dev_traits, groups, mo, pl, roster):
+@app.cell
+def _(create_dataframe_markdown, dev_traits, groups, mo, pl, roster):
     # Create the cartesian product of groups and dev traits.
     _group_dev_combos = groups.join(dev_traits, how="cross")
 
@@ -432,7 +475,7 @@ def _(create_dataframe_md, dev_traits, groups, mo, pl, roster):
     ).fill_null(0)
 
     star_elite_per_group = dev_per_group.filter(
-        (pl.col("dev_trait") == "elite") | (pl.col("dev_trait") == "star")
+        pl.col("dev_trait").is_in(["elite", "star"])
     )
 
     dev_per_group_pipeline = roster.group_by(["group", "class", "dev_trait"]).len("count")
@@ -443,38 +486,41 @@ def _(create_dataframe_md, dev_traits, groups, mo, pl, roster):
     # Vertical stack of all the dataframes created in this cell.
     mo.vstack(
         [
-            create_dataframe_md("_group_dev_combos"),
+            create_dataframe_markdown("_group_dev_combos"),
             _group_dev_combos,
-            create_dataframe_md("dev_per_group"),
+            create_dataframe_markdown("dev_per_group"),
             dev_per_group,
-            create_dataframe_md("star_elite_per_group"),
+            create_dataframe_markdown("star_elite_per_group"),
             star_elite_per_group,
-            create_dataframe_md("dev_per_group_pipeline"),
+            create_dataframe_markdown("dev_per_group_pipeline"),
             dev_per_group_pipeline,
         ]
     )
     return dev_per_group, dev_per_group_pipeline, star_elite_per_group
 
 
-@app.cell(hide_code=True)
+@app.cell
 def _(
     alt,
     anchor,
+    color_1,
+    color_2,
+    color_3,
+    color_4,
     data_path,
     dev_per_group,
     dev_per_group_pipeline,
-    font_size,
+    dev_y_scale_max,
     groups,
     mo,
-    red_1,
-    red_2,
-    red_3,
-    red_4,
-    season_dropdown,
+    season,
     star_elite_per_group,
+    star_elite_y_scale_max,
+    team,
+    title_font_size,
     width,
 ):
-    # define shared plot properties.
+    # Define shared plot properties.
     _x_axis = alt.X(
         "group:N",
         title="Group",
@@ -485,6 +531,7 @@ def _(
     _legend_title = "Development Trait"
 
     # -------------------------------------------------------------------------------
+    # Dev traits per group chart.
     _dev_trait_chart = (
         alt.Chart(dev_per_group)
         .mark_bar()
@@ -493,15 +540,15 @@ def _(
             y=alt.Y(
                 "count:Q",
                 title=_y_axis_title,
-                axis=alt.Axis(tickCount=12, format="d"),
-                scale=alt.Scale(domain=[0, 11]),
+                axis=alt.Axis(tickCount=dev_y_scale_max + 1, format="d"),
+                scale=alt.Scale(domain=[0, dev_y_scale_max]),
             ),
             color=alt.Color(
                 "dev_trait:N",
                 title=_legend_title,
                 scale=alt.Scale(
                     domain=["elite", "star", "impact", "normal"],
-                    range=[red_1, red_2, red_3, red_4],
+                    range=[color_1, color_2, color_3, color_4],
                 ),
             ),
             order="order:O",
@@ -510,14 +557,15 @@ def _(
             width=width,
             height=350,
             title={
-                "text": f"{season_dropdown.value} Player Development Traits per Group",
-                "fontSize": font_size,
+                "text": f"{team.replace('_', ' ').title()} {season} Player Development Traits per Group",
+                "fontSize": title_font_size,
                 "anchor": anchor,
             },
         )
     )
 
     # -------------------------------------------------------------------------------
+    # Star and elite players per group chart.
     _star_elite_chart = (
         alt.Chart(star_elite_per_group)
         .mark_bar()
@@ -526,15 +574,15 @@ def _(
             y=alt.Y(
                 "count:Q",
                 title=_y_axis_title,
-                axis=alt.Axis(tickCount=8, format="d"),
-                scale=alt.Scale(domain=[0, 7]),
+                axis=alt.Axis(tickCount=star_elite_y_scale_max + 1, format="d"),
+                scale=alt.Scale(domain=[0, star_elite_y_scale_max]),
             ),
             color=alt.Color(
                 "dev_trait:N",
                 title=_legend_title,
                 scale=alt.Scale(
                     domain=["elite", "star"],
-                    range=[red_1, red_2],
+                    range=[color_1, color_2],
                 ),
             ),
             order="order:O",
@@ -543,14 +591,15 @@ def _(
             width=width,
             height=200,
             title={
-                "text": f"{season_dropdown.value} Star and Elite Players per Group",
-                "fontSize": font_size,
+                "text": f"{team.replace('_', ' ').title()} {season} Star and Elite Players per Group",
+                "fontSize": title_font_size,
                 "anchor": anchor,
             },
         )
     )
 
     # -------------------------------------------------------------------------------
+    # Player development pipeline per group chart.
     _dev_per_group_pipeline_chart = (
         alt.Chart(dev_per_group_pipeline)
         .mark_bar()
@@ -562,7 +611,7 @@ def _(
                 title="Development Trait",
                 scale=alt.Scale(
                     domain=["elite", "star", "impact", "normal"],
-                    range=[red_1, red_2, red_3, red_4],
+                    range=[color_1, color_2, color_3, color_4],
                 ),
             ),
             order="order:O",
@@ -572,8 +621,8 @@ def _(
         .facet(
             row=alt.Row("class:N", sort=["FR", "SO", "JR", "SR"], title="Class"),
             title={
-                "text": f"{season_dropdown.value} Player Development Pipeline per Group",
-                "fontSize": font_size,
+                "text": f"{team.replace('_', ' ').title()} {season} Player Development Pipeline per Group",
+                "fontSize": title_font_size,
                 "anchor": anchor,
             },
         )
@@ -581,15 +630,15 @@ def _(
 
     # Save the charts as images.
     _dev_trait_chart.save(
-        data_path / "images" / f"{season_dropdown.value}_dev_per_group.png",
+        data_path / "images" / f"dev_per_group_{season}_{team}.png",
         scale_factor=2.0,
     )
     _star_elite_chart.save(
-        data_path / "images" / f"{season_dropdown.value}_star_elite_per_group.png",
+        data_path / "images" / f"star_elite_per_group_{season}_{team}.png",
         scale_factor=2.0,
     )
     _dev_per_group_pipeline_chart.save(
-        data_path / "images" / f"{season_dropdown.value}_dev_per_group_pipeline.png",
+        data_path / "images" / f"dev_per_group_pipeline_{season}_{team}.png",
         scale_factor=2.0,
     )
 
@@ -608,14 +657,14 @@ def _(
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(r"""### Possible Non-Senior Players Leaving""")
+    mo.md(r"""### Possible Non-Senior Drafted Players""")
     return
 
 
 @app.cell
 def _(pl, roster):
-    roster.filter((pl.col("overall") >= 87) & (pl.col("class") != "SR")).sort(
-        "overall", descending=True
+    roster.filter((pl.col("overall_start") >= 87) & (pl.col("class") != "SR")).sort(
+        "overall_start", descending=True
     )
     return
 
@@ -637,15 +686,9 @@ def _(pl, roster):
     young_players = roster.filter((pl.col("class") == "FR") | (pl.col("class") == "SO"))
 
     young_players.group_by("group").mean().select(
-        pl.col("group"), pl.col("overall").round(0).alias("avg_overall")
-    ).sort("avg_overall")
+        pl.col("group"), pl.col("overall_start").round(0).alias("avg_overall_start")
+    ).sort("avg_overall_start")
     return (young_players,)
-
-
-@app.cell
-def _(pl, roster):
-    roster.filter(pl.col("group") == "OLB")
-    return
 
 
 @app.cell(hide_code=True)
@@ -701,7 +744,7 @@ def _(pl, team_archetypes):
 
 
 @app.cell
-def _(alt, anchor, db_archetypes, font_size, mo, season_dropdown):
+def _(alt, anchor, db_archetypes, mo, season, team, title_font_size):
     _base_chart = (
         alt.Chart(db_archetypes)
         .mark_bar()
@@ -714,8 +757,8 @@ def _(alt, anchor, db_archetypes, font_size, mo, season_dropdown):
         .properties(
             width=400,
             title={
-                "text": f"{season_dropdown.value} DB Archetypes",
-                "fontSize": font_size,
+                "text": f"{team.replace('_', ' ').title()} {season} DB Archetypes",
+                "fontSize": title_font_size,
                 "anchor": anchor,
             },
         )
@@ -754,7 +797,9 @@ def _():
     import altair as alt
     import marimo as mo
     import polars as pl
-    return Path, alt, mo, pl
+
+    from utilities import find_project_path, create_dataframe_markdown
+    return Path, alt, create_dataframe_markdown, find_project_path, mo, pl
 
 
 @app.cell(hide_code=True)
@@ -764,78 +809,55 @@ def _(mo):
 
 
 @app.cell
-def _(find_project_path):
-    # Data directory path.
-    _project_path = find_project_path("cfb-analysis")
-    data_path = _project_path / "data"
+def _(mo, team, team_season_form):
+    mo.stop(team_season_form.value is None, mo.md("**Submit the form above to continue.**"))
+
+    # Team color scheme.
+    colors = {
+        "fresno_state": {
+            "color_1": "#1e40af",
+            "color_2": "#3b82f6",
+            "color_3": "#93c5fd",
+            "color_4": "#bfdbfe",
+        },
+        "san_diego_state": {
+            "color_1": "#27272a",
+            "color_2": "#71717a",
+            "color_3": "#d4d4d8",
+            "color_4": "#e4e4e7",
+        },
+        "stanford": {
+            "color_1": "#991b1b",
+            "color_2": "#ef4444",
+            "color_3": "#fca5a5",
+            "color_4": "#fecaca",
+        },
+    }
 
     # Shared color scheme.
-    red_1 = "#991b1b"
-    red_2 = "#ef4444"
-    red_3 = "#fca5a5"
-    red_4 = "#fecaca"
+    color_1 = colors[team]["color_1"]
+    color_2 = colors[team]["color_2"]
+    color_3 = colors[team]["color_3"]
+    color_4 = colors[team]["color_4"]
 
-    # Plot properties.
+    # Plot related constants.
+    dev_y_scale_max = 12
+    star_elite_y_scale_max = 8
     width = 600
-    font_size = 16
+    title_font_size = 16
     anchor = "middle"
-    return anchor, data_path, font_size, red_1, red_2, red_3, red_4, width
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(
-        r"""
-        ### Helper Functions
-        #### Find Project Path
-        """
+    return (
+        anchor,
+        color_1,
+        color_2,
+        color_3,
+        color_4,
+        colors,
+        dev_y_scale_max,
+        star_elite_y_scale_max,
+        title_font_size,
+        width,
     )
-    return
-
-
-@app.cell
-def _(Path):
-    def find_project_path(project_name: str) -> Path | None:
-        marker_files = [".git", "pyproject.toml"]
-        current_path = Path().cwd()
-        index = 0
-
-        try:
-            # Check current directory.
-            if current_path.name == project_name and any(
-                (current_path / marker).exists() for marker in marker_files
-            ):
-                return current_path
-
-            # Check parent directories.
-            while True:
-                parent = current_path.parents[index]
-                if parent.name == project_name and any(
-                    (parent / marker).exists() for marker in marker_files
-                ):
-                    return parent
-                index += 1
-
-        except IndexError:
-            return None
-    return (find_project_path,)
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""#### Dataframe Markdown""")
-    return
-
-
-@app.cell
-def _(mo):
-    def create_dataframe_md(frame_name: str) -> mo._output.md._md:
-        return mo.md(
-            f"""<br>
-            *`{frame_name}`*
-        """
-        )
-    return (create_dataframe_md,)
 
 
 if __name__ == "__main__":

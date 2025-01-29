@@ -51,27 +51,45 @@ def _(mo):
 
 
 @app.cell
-def _(Path, Workbook, find_project_path, mo, pl, team_season_form):
+def _(
+    Workbook,
+    find_project_path,
+    mo,
+    pl,
+    roster_file_path,
+    team_season_form,
+):
+    # Stop execution if the form has not been submitted.
     mo.stop(team_season_form.value is None, mo.md("**Submit the form above to continue.**"))
 
-    # Data directory path.
+    team = team_season_form.value["team_dropdown"]
+    current_season = team_season_form.value["season_dropdown"]
+    next_season = str(int(current_season) + 1)
+
+    # Stop execution if the form has been submitted but the team and/or season
+    # has not been selected.
+    mo.stop(
+        any(x is None for x in (team, current_season)),
+        mo.md(
+            "**Either the team, the season, or both have not been selected. Please make sure both have been selected and then resubmit the form above to continue.**"
+        ),
+    )
+
+    # Path to the project's `data` directory.
     _project_path = find_project_path("cfb-analysis")
     data_path = _project_path / "data"
 
-    roster_file_path = Path(
-        data_path / "datasets" / f"roster_{team_season_form.value['team_dropdown']}.xlsx"
-    )
-
-    current_season = team_season_form.value["current_season_dropdown"]
-    next_season = str(int(current_season) + 1)
+    # Path to the roster excel file based on the team chosen for analysis.
+    _roster_file_path = data_path / "datasets" / f"roster_{team}.xlsx"
 
     class_enum = pl.Enum(["FR", "SO", "JR", "SR"])
+    # This refers to either offense, defense, or special teams.
     team_enum = pl.Enum(["OFF", "DEF", "ST"])
     dev_trait_enum = pl.Enum(["normal", "impact", "star", "elite"])
 
-    # Set up the schema overrides for the columns that need it. The `overall` column needs
-    # an override because `polars` does not infer the column as an integer for the `2027`
-    # season since all the values are #N/A in Excel.
+    # Set up the schema overrides for the columns that need it. The `overall_start`
+    # and `overall_end` columns need an override because `polars` does not infer
+    # the column as an integer for roster years that have this data missing.
     _schema_overrides = {
         "class": class_enum,
         "position": pl.Categorical,
@@ -80,23 +98,28 @@ def _(Path, Workbook, find_project_path, mo, pl, team_season_form):
         "team": team_enum,
         "archetype": pl.Categorical,
         "dev_trait": dev_trait_enum,
-        "overall": pl.UInt8,
+        "overall_start": pl.UInt8,
+        "overall_end": pl.UInt8,
     }
 
-    # Read in excel file into a dataframe.
+    # Create the `rosters` dictionary containing all roster sheets from the excel
+    # file.
     rosters = pl.read_excel(
-        roster_file_path, sheet_id=0, schema_overrides=_schema_overrides
+        _roster_file_path, sheet_id=0, schema_overrides=_schema_overrides
     )
 
-    # Remove seniors.
+    # Create a new dictionary entry containing a copy of the current season's roster
+    # with the seniors removed. This forms the basis for next season's roster.
     rosters[next_season] = rosters[current_season].filter(pl.col("class") != "SR")
 
-    # Update class value.
+    # Progress the `class` value for each player in next season's roster.
     new_class_mapping = {"FR": "SO", "SO": "JR", "JR": "SR"}
     rosters[next_season] = rosters[next_season].with_columns(
         pl.col("class").replace(new_class_mapping)
     )
 
+    # Write any previous rosters, the current season, and next season's roster to an
+    # excel file of the same name.
     print(
         f"Writing roster dataframe to new sheet '{next_season}' within the excel file at:\n{roster_file_path}"
     )
@@ -111,10 +134,10 @@ def _(Path, Workbook, find_project_path, mo, pl, team_season_form):
         new_class_mapping,
         next_season,
         rfp,
-        roster_file_path,
         rosters,
         season,
         season_roster,
+        team,
         team_enum,
     )
 
@@ -131,43 +154,9 @@ def _():
     import polars as pl
     from pathlib import Path
     from xlsxwriter import Workbook
-    return Path, Workbook, mo, pl
 
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md("""### Helper Functions""")
-    return
-
-
-@app.cell
-def _(Path):
-    def find_project_path(project_name: str) -> Path | None:
-        marker_files = [".git", "pyproject.toml"]
-        current_path = Path().cwd()
-        index = 0
-
-        try:
-            # Check current directory.
-            if current_path.name == project_name and any(
-                (current_path / marker).exists() for marker in marker_files
-            ):
-                return current_path
-
-            # Check parent directories.
-            while True:
-                parent = current_path.parents[index]
-                if parent.name == project_name and any(
-                    (parent / marker).exists() for marker in marker_files
-                ):
-                    return parent
-                index += 1
-
-        except IndexError:
-            print(
-                "Could not find a project directory containing either a .git or pyproject.toml file."
-            )
-    return (find_project_path,)
+    from utilities import find_project_path
+    return Path, Workbook, find_project_path, mo, pl
 
 
 if __name__ == "__main__":
