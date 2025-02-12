@@ -1,6 +1,6 @@
 import marimo
 
-__generated_with = "0.10.17"
+__generated_with = "0.11.2"
 app = marimo.App(
     width="medium",
     css_file="C:\\Users\\cdpet\\Documents\\Post School Coursework\\dev-materials\\configs\\marimo\\theme\\custom-theme.css",
@@ -17,7 +17,7 @@ def _(mo):
 def _(mo):
     _teams = {
         "Fresno State": "fresno_state",
-        # "San Diego State": "san_diego_state",
+        "San Diego State": "san_diego_state",
         "Stanford": "stanford",
     }
 
@@ -63,7 +63,7 @@ def _(find_project_path, mo, pl, team_season_form):
     mo.stop(
         any(x is None for x in (team, season)),
         mo.md(
-            "**Either the team, the season, or both have not been selected. Please make sure both have been selected and then resubmit the form above to continue.**"
+            "**Either the team, the season, or both have not been selected. Please make sure both have been selected and resubmit the form above to continue.**"
         ),
     )
 
@@ -95,11 +95,15 @@ def _(find_project_path, mo, pl, team_season_form):
     }
 
     # Create the `roster` dataframe from the excel file.
-    roster = pl.read_excel(
-        _roster_file_path,
-        sheet_name=season,
-        schema_overrides=_schema_overrides,
-    )
+    try:
+        roster = pl.read_excel(
+            _roster_file_path,
+            sheet_name=season,
+            schema_overrides=_schema_overrides,
+        )
+    except ValueError as e:
+        print(e)
+        mo.stop(True, mo.md("**Execution halted.**"))
     return (
         class_enum,
         data_path,
@@ -109,6 +113,12 @@ def _(find_project_path, mo, pl, team_season_form):
         team,
         team_enum,
     )
+
+
+@app.cell
+def _(pl, roster):
+    roster.filter(pl.col("dev_trait").is_not_null()).group_by("dev_trait").len()
+    return
 
 
 @app.cell(hide_code=True)
@@ -215,7 +225,7 @@ def _(
 
     # Save the chart as an image.
     _player_classes_chart.save(
-        data_path / "images" / f"player_classes_{season}_{team}.png",
+        data_path / "images" / f"{team}" / f"{season}_player_classes_{team}.png",
         scale_factor=2.0,
     )
 
@@ -260,9 +270,10 @@ def _(create_dataframe_markdown, dev_traits, mo, pl, positions, roster):
         pl.col("dev_trait").is_in(["elite", "star"])
     )
 
-    dev_per_position_pipeline = roster.group_by(["position", "class", "dev_trait"]).len(
-        "count"
-    )
+    dev_per_position_pipeline = roster.filter(pl.col("dev_trait").is_not_null())
+    dev_per_position_pipeline = dev_per_position_pipeline.group_by(
+        ["position", "class", "dev_trait"]
+    ).len("count")
     dev_per_position_pipeline = dev_per_position_pipeline.join(
         dev_traits, how="left", on="dev_trait"
     )
@@ -287,7 +298,7 @@ def _(create_dataframe_markdown, dev_traits, mo, pl, positions, roster):
     )
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(
     alt,
     anchor,
@@ -418,15 +429,15 @@ def _(
 
     # Save the charts as images.
     _dev_trait_chart.save(
-        data_path / "images" / f"dev_per_position_{season}_{team}.png",
+        data_path / "images" / f"{team}" / f"{season}_dev_per_position_{team}.png",
         scale_factor=2.0,
     )
     _star_elite_chart.save(
-        data_path / "images" / f"star_elite_per_position_{season}_{team}.png",
+        data_path / "images" / f"{team}" / f"{season}_star_elite_per_position_{team}.png",
         scale_factor=2.0,
     )
     _dev_per_position_pipeline_chart.save(
-        data_path / "images" / f"dev_per_position_pipeline_{season}_{team}.png",
+        data_path / "images" / f"{team}" / f"{season}_dev_per_position_pipeline_{team}.png",
         scale_factor=2.0,
     )
 
@@ -440,6 +451,12 @@ def _(
         align="center",
         gap=3.0,
     )
+    return
+
+
+@app.cell
+def _(pl, roster):
+    roster.filter(pl.col("position") == "CB")
     return
 
 
@@ -459,7 +476,7 @@ def _(mo):
     return
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(create_dataframe_markdown, dev_traits, groups, mo, pl, roster):
     # Create the cartesian product of groups and dev traits.
     _group_dev_combos = groups.join(dev_traits, how="cross")
@@ -478,7 +495,10 @@ def _(create_dataframe_markdown, dev_traits, groups, mo, pl, roster):
         pl.col("dev_trait").is_in(["elite", "star"])
     )
 
-    dev_per_group_pipeline = roster.group_by(["group", "class", "dev_trait"]).len("count")
+    dev_per_group_pipeline = roster.filter(pl.col("dev_trait").is_not_null())
+    dev_per_group_pipeline = dev_per_group_pipeline.group_by(
+        ["group", "class", "dev_trait"]
+    ).len("count")
     dev_per_group_pipeline = dev_per_group_pipeline.join(
         dev_traits, how="left", on="dev_trait"
     )
@@ -499,7 +519,7 @@ def _(create_dataframe_markdown, dev_traits, groups, mo, pl, roster):
     return dev_per_group, dev_per_group_pipeline, star_elite_per_group
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(
     alt,
     anchor,
@@ -630,15 +650,15 @@ def _(
 
     # Save the charts as images.
     _dev_trait_chart.save(
-        data_path / "images" / f"dev_per_group_{season}_{team}.png",
+        data_path / "images" / f"{team}" / f"{season}_dev_per_group_{team}.png",
         scale_factor=2.0,
     )
     _star_elite_chart.save(
-        data_path / "images" / f"star_elite_per_group_{season}_{team}.png",
+        data_path / "images" / f"{team}" / f"{season}_star_elite_per_group_{team}.png",
         scale_factor=2.0,
     )
     _dev_per_group_pipeline_chart.save(
-        data_path / "images" / f"dev_per_group_pipeline_{season}_{team}.png",
+        data_path / "images" / f"{team}" / f"{season}_dev_per_group_pipeline_{team}.png",
         scale_factor=2.0,
     )
 
@@ -682,13 +702,24 @@ def _(mo):
 
 
 @app.cell
-def _(pl, roster):
-    young_players = roster.filter((pl.col("class") == "FR") | (pl.col("class") == "SO"))
+def _(mo, pl, roster):
+    young_players = roster.filter(pl.col("class").is_in(["FR", "SO"]))
 
-    young_players.group_by("group").mean().select(
-        pl.col("group"), pl.col("overall_start").round(0).alias("avg_overall_start")
-    ).sort("avg_overall_start")
+    mo.plain(
+        young_players.group_by("group")
+        .agg(
+            pl.col("overall_start").mean().round(1).alias("avg_overall_start"),
+            pl.len().alias("count"),
+        )
+        .sort(["avg_overall_start", "count"])
+    )
     return (young_players,)
+
+
+@app.cell
+def _(pl, young_players):
+    young_players.filter(pl.col("position") == "K")
+    return
 
 
 @app.cell(hide_code=True)
@@ -799,6 +830,8 @@ def _():
     import polars as pl
 
     from utilities import find_project_path, create_dataframe_markdown
+
+    pl.Config.set_tbl_rows(20)
     return Path, alt, create_dataframe_markdown, find_project_path, mo, pl
 
 
@@ -818,19 +851,19 @@ def _(mo, team, team_season_form):
             "color_1": "#1e40af",
             "color_2": "#3b82f6",
             "color_3": "#93c5fd",
-            "color_4": "#bfdbfe",
+            "color_4": "#dbeafe",
         },
         "san_diego_state": {
-            "color_1": "#27272a",
-            "color_2": "#71717a",
-            "color_3": "#d4d4d8",
+            "color_1": "#09090b",
+            "color_2": "#52525b",
+            "color_3": "#a1a1aa",
             "color_4": "#e4e4e7",
         },
         "stanford": {
             "color_1": "#991b1b",
             "color_2": "#ef4444",
             "color_3": "#fca5a5",
-            "color_4": "#fecaca",
+            "color_4": "#fee2e2",
         },
     }
 
@@ -841,7 +874,7 @@ def _(mo, team, team_season_form):
     color_4 = colors[team]["color_4"]
 
     # Plot related constants.
-    dev_y_scale_max = 12
+    dev_y_scale_max = 11
     star_elite_y_scale_max = 8
     width = 600
     title_font_size = 16
