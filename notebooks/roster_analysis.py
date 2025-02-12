@@ -829,7 +829,7 @@ def _():
     import marimo as mo
     import polars as pl
 
-    from utilities import find_project_path, create_dataframe_markdown
+    from utilities import create_dataframe_markdown, find_project_path
 
     pl.Config.set_tbl_rows(20)
     return Path, alt, create_dataframe_markdown, find_project_path, mo, pl

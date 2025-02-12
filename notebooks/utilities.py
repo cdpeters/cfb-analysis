@@ -1,6 +1,8 @@
 from pathlib import Path
+
 import marimo as mo
 from marimo._output.md import _md
+
 
 def find_project_path(project_name: str) -> Path:
     marker_files = [".git", "pyproject.toml"]
@@ -22,6 +24,7 @@ def find_project_path(project_name: str) -> Path:
     raise FileNotFoundError(
         "Could not find a project directory containing either a .git or pyproject.toml file."
     )
+
 
 def create_dataframe_markdown(frame_name: str) -> _md:
     return mo.md(

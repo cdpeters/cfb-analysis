@@ -1,6 +1,6 @@
 import marimo
 
-__generated_with = "0.10.17"
+__generated_with = "0.11.2"
 app = marimo.App(
     width="medium",
     css_file="C:\\Users\\cdpet\\Documents\\Post School Coursework\\dev-materials\\configs\\marimo\\theme\\custom-theme.css",
@@ -150,9 +150,10 @@ def _(mo):
 
 @app.cell
 def _():
+    from pathlib import Path
+
     import marimo as mo
     import polars as pl
-    from pathlib import Path
     from xlsxwriter import Workbook
 
     from utilities import find_project_path

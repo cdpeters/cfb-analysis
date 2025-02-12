@@ -21,6 +21,9 @@ dev = [
     "xlsxwriter>=3.2.0",
 ]
 
+[tool.ruff.lint.isort]
+known-first-party = ["utilities"]
+
 [tool.ruff.lint]
 select = ["D"]
 
