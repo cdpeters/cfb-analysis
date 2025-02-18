@@ -1,6 +1,6 @@
 import marimo
 
-__generated_with = "0.11.2"
+__generated_with = "0.11.6"
 app = marimo.App(
     width="medium",
     css_file="C:\\Users\\cdpet\\Documents\\Post School Coursework\\dev-materials\\configs\\marimo\\theme\\custom-theme.css",
@@ -18,9 +18,9 @@ def _(mo):
     # Season for analysis.
     _seasons = ["2029"]
 
-    # Form creation. The team and year of next season must be selected and then submitted prior
-    # to processing the roster file.
-    team_season_form = (
+    # Form creation. The year of the current season must be selected prior to
+    # processing the roster files.
+    season_form = (
         mo.md("""
         ### Select **Season** for roster comparison
 
@@ -31,16 +31,22 @@ def _(mo):
         )
         .form(bordered=False)
     )
-    team_season_form
-    return (team_season_form,)
+    season_form
+    return (season_form,)
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""### Load Rosters""")
+    return
 
 
 @app.cell
-def _(find_project_path, mo, pl, team_season_form):
+def _(find_project_path, mo, pl, roster, season_form):
     # Stop execution if the form has not been submitted.
-    mo.stop(team_season_form.value is None, mo.md("**Submit the form above to continue.**"))
+    mo.stop(season_form.value is None, mo.md("**Submit the form above to continue.**"))
 
-    season = team_season_form.value["season_dropdown"]
+    season = season_form.value["season_dropdown"]
 
     # Stop execution if the form has been submitted but the season has not been
     # selected.
@@ -71,20 +77,24 @@ def _(find_project_path, mo, pl, team_season_form):
     _project_path = find_project_path("cfb-analysis")
     data_path = _project_path / "data"
 
+    # University names.
+    _universities = ("fresno_state", "san_diego_state", "stanford")
+
     # Create the `rosters` dictionary containing all the roster dataframes.
     try:
         rosters = {}
 
-        for team in ("fresno_state", "san_diego_state", "stanford"):
-            # Path to the roster excel file for `team`.
-            _roster_file_path = data_path / "datasets" / f"roster_{team}.xlsx"
+        for university in _universities:
+            # Path to the roster excel file for `university`.
+            _roster_file_path = data_path / "datasets" / f"roster_{university}.xlsx"
 
-            rosters[team] = pl.read_excel(
+            _roster = pl.read_excel(
                 _roster_file_path,
                 sheet_name=season,
                 schema_overrides=_schema_overrides,
             )
-            rosters[team] = rosters[team].with_columns(pl.lit(team).alias("university"))
+            _roster = _roster.with_columns(pl.lit(university).alias("university"))
+            rosters = rosters.append(roster)
     except (ValueError, FileNotFoundError) as e:
         print(e)
         mo.stop(True, mo.md("**Execution halted.**"))
@@ -94,9 +104,15 @@ def _(find_project_path, mo, pl, team_season_form):
         dev_trait_enum,
         rosters,
         season,
-        team,
         team_enum,
+        university,
     )
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""### Combine the Rosters""")
+    return
 
 
 @app.cell
@@ -112,7 +128,7 @@ def _(pl, rosters):
 
 
 @app.cell
-def _(alt, colors, pl):
+def _(alt, pl, university_colors):
     def _create_dev_by_class_df(
         df: pl.DataFrame, dev_trait: str, position: str
     ) -> pl.DataFrame:
@@ -140,7 +156,8 @@ def _(alt, colors, pl):
         )
 
         custom_colors = {
-            team: team_colors["color_2"] for team, team_colors in colors.items()
+            university: university_color_dict["color_2"]
+            for university, university_color_dict in university_colors.items()
         }
 
         # Create scatter plot
@@ -216,7 +233,7 @@ def _():
 
 @app.cell
 def _():
-    colors = {
+    university_colors = {
         "fresno_state": {
             "color_1": "#1e40af",
             "color_2": "#3b82f6",
@@ -236,7 +253,7 @@ def _():
             "color_4": "#fee2e2",
         },
     }
-    return (colors,)
+    return (university_colors,)
 
 
 if __name__ == "__main__":
