@@ -17,9 +17,9 @@ def _(mo):
 def _(mo):
     _seasons = [str(year) for year in range(2027, 2041)]
 
-    # Form creation. The team and year of next season must be selected and then submitted prior
-    # to processing the roster file.
-    team_season_form = (
+    # Form creation. The year of the current season must be selected and then submitted
+    # prior to processing the roster files.
+    current_season_form = (
         mo.md("""
         ### Select the **Current Season** to create next year's initial rosters
         - All 3 university team rosters will be processed at the same time
@@ -38,22 +38,24 @@ def _(mo):
         )
         .form(bordered=False)
     )
-    team_season_form
-    return (team_season_form,)
+    current_season_form
+    return (current_season_form,)
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(
     create_next_season_initial_roster,
+    current_season_form,
     find_project_path,
     mo,
     schema_overrides,
-    team_season_form,
 ):
     # Stop execution if the form has not been submitted.
-    mo.stop(team_season_form.value is None, mo.md("**Submit the form above to continue.**"))
+    mo.stop(
+        current_season_form.value is None, mo.md("**Submit the form above to continue.**")
+    )
 
-    _current_season = team_season_form.value["current_season_dropdown"]
+    _current_season = current_season_form.value["current_season_dropdown"]
 
     # Stop execution if the form has been submitted but the current season has
     # not been selected.
@@ -64,21 +66,18 @@ def _(
         ),
     )
 
-    _next_season = str(int(_current_season) + 1)
-
     # Path to the project's `data` directory.
     _project_path = find_project_path("cfb-analysis")
     _data_path = _project_path / "data"
 
-    for team in ("fresno_state", "san_diego_state", "stanford"):
+    for university in ("fresno_state", "san_diego_state", "stanford"):
         create_next_season_initial_roster(
             data_path=_data_path,
-            team=team,
+            university=university,
             current_season=_current_season,
-            next_season=_next_season,
             schema_overrides=schema_overrides,
         )
-    return (team,)
+    return (university,)
 
 
 @app.cell(hide_code=True)
@@ -106,13 +105,27 @@ def _(Path, Workbook, pl):
 
     def create_next_season_initial_roster(
         data_path: Path,
-        team: str,
+        university: str,
         current_season: int,
-        next_season: int,
         schema_overrides: dict[str, PolarsDataType],
     ) -> None:
-        # Path to the roster excel file based on the team chosen for analysis.
-        roster_file_path = data_path / "datasets" / f"roster_{team}.xlsx"
+        """Create next season's intial roster for `university`.
+
+        Process players leaving due to graduation and also advance the class standing of
+        each player remaining.
+
+        Parameters
+        ----------
+        data_path : Path
+            Path to the project's data directory.
+        university : str
+            The university being processed. Underscore separated.
+        current_season : int
+            Current season integer.
+        schema_overrides : dict[str, PolarsDataType]
+            Data types for each column.
+        """
+        roster_file_path = data_path / "datasets" / f"roster_{university}.xlsx"
 
         # Create the `rosters` dictionary containing all roster sheets from the excel
         # file.
@@ -120,16 +133,19 @@ def _(Path, Workbook, pl):
             roster_file_path, sheet_id=0, schema_overrides=schema_overrides
         )
 
-        # Create a new dictionary entry containing a copy of the current season's roster
-        # with the seniors removed. This forms the basis for next season's roster.
+        next_season = str(int(current_season) + 1)
+
+        # Create `next_season` initial roster from `current_season` roster with the
+        # seniors filtered out.
         rosters[next_season] = rosters[current_season].filter(pl.col("class") != "SR")
 
-        # Progress the `class` value for each player in next season's roster.
+        # Progress the `class` standing for each player.
         new_class_mapping = {"FR": "SO", "SO": "JR", "JR": "SR"}
         rosters[next_season] = rosters[next_season].with_columns(
             pl.col("class").replace(new_class_mapping)
         )
 
+        # Reset `overall_start` and `overall_end` columns to empty.
         rosters[next_season] = rosters[next_season].with_columns(
             pl.lit(None).cast(pl.Int64).alias("overall_start"),
             pl.lit(None).cast(pl.Int64).alias("overall_end"),
