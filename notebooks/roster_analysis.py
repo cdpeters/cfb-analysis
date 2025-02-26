@@ -1,6 +1,6 @@
 import marimo
 
-__generated_with = "0.11.6"
+__generated_with = "0.11.9"
 app = marimo.App(
     width="medium",
     css_file="C:\\Users\\cdpet\\Documents\\Post School Coursework\\dev-materials\\configs\\marimo\\theme\\custom-theme.css",
@@ -22,7 +22,7 @@ def _(mo):
     }
 
     # Season for analysis.
-    _seasons = ["2027", "2028", "2029"]
+    _seasons = ["2027", "2028", "2029", "2030"]
 
     # Form creation. The university and year of next season must be selected and then submitted prior
     # to processing the roster file.
@@ -45,7 +45,7 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
-def _(find_project_path, mo, pl, university_season_form):
+def _(find_project_path, mo, pl, schema_overrides, university_season_form):
     # Stop execution if the form has not been submitted.
     mo.stop(
         university_season_form.value is None,
@@ -68,52 +68,37 @@ def _(find_project_path, mo, pl, university_season_form):
     _project_path = find_project_path("cfb-analysis")
     data_path = _project_path / "data"
 
+    # Expected season directory path.
+    season_path = data_path / "images" / f"{university}" / f"{season}"
+
+    # Check if the `season` directory exists and create it if it doesn't.
+    if not season_path.exists():
+        season_path.mkdir(parents=True)
+        print(
+            f"Created directory: {season_path.name}",
+            f"At location: {season_path}",
+            sep="\n",
+            end="\n\n",
+        )
+
     # Path to the roster excel file based on the university chosen for analysis.
     _roster_file_path = data_path / "datasets" / f"roster_{university}.xlsx"
-
-    class_enum = pl.Enum(["FR", "SO", "JR", "SR"])
-    # `team_enum` refers to either offense, defense, or special teams.
-    team_enum = pl.Enum(["OFF", "DEF", "ST"])
-    dev_trait_enum = pl.Enum(["normal", "impact", "star", "elite"])
-
-    # Set up the schema overrides for the columns that need it. The `overall_start`
-    # and `overall_end` columns need an override because `polars` does not infer
-    # the column as an integer for roster years that have this data missing.
-    _schema_overrides = {
-        "class": class_enum,
-        "position": pl.Categorical,
-        "group": pl.Categorical,
-        "secondary_group": pl.Categorical,
-        "team": team_enum,
-        "archetype": pl.Categorical,
-        "dev_trait": dev_trait_enum,
-        "overall_start": pl.UInt8,
-        "overall_end": pl.UInt8,
-    }
 
     # Create the `roster` dataframe from the excel file.
     try:
         roster = pl.read_excel(
             _roster_file_path,
             sheet_name=season,
-            schema_overrides=_schema_overrides,
+            schema_overrides=schema_overrides,
         )
 
         print(
             f"The {season} roster for {' '.join(university.split('_')).title()} was loaded successfully."
         )
-    except ValueError as e:
+    except (ValueError, FileNotFoundError) as e:
         print(e)
         mo.stop(True, mo.md("**Execution halted.**"))
-    return (
-        class_enum,
-        data_path,
-        dev_trait_enum,
-        roster,
-        season,
-        team_enum,
-        university,
-    )
+    return data_path, roster, season, season_path, university
 
 
 @app.cell(hide_code=True)
@@ -133,7 +118,7 @@ def _(mo):
     return
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(dev_trait_enum, pl, roster):
     positions = roster.select("position").unique()
     groups = roster.select("group").unique()
@@ -152,7 +137,7 @@ def _(mo):
     return
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(class_enum, pl, roster):
     # Create the order that will be used to ensure class order is correct.
     _player_class_order = pl.DataFrame(
@@ -177,10 +162,10 @@ def _(
     anchor,
     color_1,
     color_2,
-    data_path,
     mo,
     player_classes,
     season,
+    season_path,
     title_font_size,
     university,
 ):
@@ -220,11 +205,7 @@ def _(
 
     # Save the chart as an image.
     _player_classes_chart.save(
-        data_path
-        / "images"
-        / f"{university}"
-        / f"{season}_player_classes_{university}.png",
-        scale_factor=2.0,
+        season_path / f"{season}_player_classes_{university}.png", scale_factor=2.0
     )
 
     mo.vstack([mo.ui.altair_chart(_player_classes_chart)], align="center")
@@ -289,11 +270,7 @@ def _(dev_traits, pl, positions, roster):
     #         dev_per_position_pipeline,
     #     ]
     # )
-    return (
-        dev_per_position,
-        dev_per_position_pipeline,
-        star_elite_per_position,
-    )
+    return dev_per_position, dev_per_position_pipeline, star_elite_per_position
 
 
 @app.cell(hide_code=True)
@@ -304,13 +281,13 @@ def _(
     color_2,
     color_3,
     color_4,
-    data_path,
     dev_per_position,
     dev_per_position_pipeline,
     dev_y_scale_max,
     mo,
     positions,
     season,
+    season_path,
     star_elite_per_position,
     star_elite_y_scale_max,
     title_font_size,
@@ -427,24 +404,13 @@ def _(
 
     # Save the charts as images.
     _dev_trait_chart.save(
-        data_path
-        / "images"
-        / f"{university}"
-        / f"{season}_dev_per_position_{university}.png",
-        scale_factor=2.0,
+        season_path / f"{season}_dev_per_position_{university}.png", scale_factor=2.0
     )
     _star_elite_chart.save(
-        data_path
-        / "images"
-        / f"{university}"
-        / f"{season}_star_elite_per_position_{university}.png",
-        scale_factor=2.0,
+        season_path / f"{season}_star_elite_per_position_{university}.png", scale_factor=2.0
     )
     _dev_per_position_pipeline_chart.save(
-        data_path
-        / "images"
-        / f"{university}"
-        / f"{season}_dev_per_position_pipeline_{university}.png",
+        season_path / f"{season}_dev_per_position_pipeline_{university}.png",
         scale_factor=2.0,
     )
 
@@ -528,13 +494,13 @@ def _(
     color_2,
     color_3,
     color_4,
-    data_path,
     dev_per_group,
     dev_per_group_pipeline,
     dev_y_scale_max,
     groups,
     mo,
     season,
+    season_path,
     star_elite_per_group,
     star_elite_y_scale_max,
     title_font_size,
@@ -651,22 +617,13 @@ def _(
 
     # Save the charts as images.
     _dev_trait_chart.save(
-        data_path / "images" / f"{university}" / f"{season}_dev_per_group_{university}.png",
-        scale_factor=2.0,
+        season_path / f"{season}_dev_per_group_{university}.png", scale_factor=2.0
     )
     _star_elite_chart.save(
-        data_path
-        / "images"
-        / f"{university}"
-        / f"{season}_star_elite_per_group_{university}.png",
-        scale_factor=2.0,
+        season_path / f"{season}_star_elite_per_group_{university}.png", scale_factor=2.0
     )
     _dev_per_group_pipeline_chart.save(
-        data_path
-        / "images"
-        / f"{university}"
-        / f"{season}_dev_per_group_pipeline_{university}.png",
-        scale_factor=2.0,
+        season_path / f"{season}_dev_per_group_pipeline_{university}.png", scale_factor=2.0
     )
 
     # Stack the charts for viewing.
@@ -690,7 +647,7 @@ def _(mo):
         #### Qualifications
         - non-senior
         - draft eligible - a true junior, redshirt junior, or a redshirt sophomore
-        - 87 overall (`overall_start`) or higher
+        - 85 overall (`overall_start`) or higher
         """
     )
     return
@@ -702,7 +659,7 @@ def _(pl, roster):
         (pl.col("class") == "SO") & (pl.col("red_shirt") == True)
     )
 
-    roster.filter(draft_eligible_non_senior & (pl.col("overall_start") >= 87)).sort(
+    roster.filter(draft_eligible_non_senior & (pl.col("overall_start") >= 85)).sort(
         "overall_start", descending=True
     )
     return (draft_eligible_non_senior,)
@@ -737,6 +694,18 @@ def _(mo, pl, roster):
 
 @app.cell(hide_code=True)
 def _(mo):
+    mo.md(r"""### Roster Viewer""")
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo, roster):
+    mo.ui.dataframe(roster, page_size=85)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
     mo.md(r"""## Appendix""")
     return
 
@@ -749,10 +718,27 @@ def _():
     import marimo as mo
     import polars as pl
 
-    from utilities import create_dataframe_markdown, find_project_path
+    from utilities import (
+        create_dataframe_markdown,
+        find_project_path,
+        schema_overrides,
+        class_enum,
+        dev_trait_enum,
+    )
 
-    pl.Config.set_tbl_rows(20)
-    return Path, alt, create_dataframe_markdown, find_project_path, mo, pl
+    # Set polars to show enough rows for the young player quality dataframe.
+    pl.Config(tbl_rows=-1)
+    return (
+        Path,
+        alt,
+        class_enum,
+        create_dataframe_markdown,
+        dev_trait_enum,
+        find_project_path,
+        mo,
+        pl,
+        schema_overrides,
+    )
 
 
 @app.cell(hide_code=True)
@@ -814,6 +800,28 @@ def _(mo, university, university_season_form):
         university_colors,
         width,
     )
+
+
+@app.cell
+def _(Path):
+    def ensure_season_pathectory(season_path: Path) -> Path:
+        """
+        Check if a directory for the specified season exists.
+        If it doesn't exist, create it.
+
+        Parameters:
+        -----------
+        season_path : Path
+            Expected path of season directory.
+
+        Returns:
+        -----------
+        Path
+            Path to the season directory
+        """
+
+        return season_path
+    return (ensure_season_pathectory,)
 
 
 if __name__ == "__main__":
