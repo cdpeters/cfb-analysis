@@ -1,6 +1,6 @@
 import marimo
 
-__generated_with = "0.11.9"
+__generated_with = "0.11.13"
 app = marimo.App(
     width="medium",
     css_file="C:\\Users\\cdpet\\Documents\\Post School Coursework\\dev-materials\\configs\\marimo\\theme\\custom-theme.css",
@@ -9,7 +9,26 @@ app = marimo.App(
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(r"""# College Football 25 Dynasty Roster Analysis""")
+    mo.md(
+        r"""
+        # 🏈 College Football 25 Dynasty Roster Analysis 🏈
+
+        The following app can be used to explore your College Football 25 dynasty roster. The UI elements are interactive, feel free to interact with an element's controls to see new views of the data.
+
+        ### Analysis Sections
+        #### Roster Viewer
+        - The **Roster Viewer** allows you to transform the view of the roster including filtering, grouping, aggregating, and sorting among other operations. 
+        #### Exploratory Analysis
+        - This section contains charts as well as tables with specific filters and/or aggregations applied and includes:
+            - Charts:
+                - **Player Class Distribution**
+                - **Dev Traits per Position**
+                - **Dev Traits per Group**
+            - Tables:
+                - **Possible Non-Senior Drafted Players**
+                - **Young Player Quality**
+        """
+    )
     return
 
 
@@ -22,7 +41,7 @@ def _(mo):
     }
 
     # Season for analysis.
-    _seasons = ["2027", "2028", "2029", "2030"]
+    _seasons = ["2029", "2030"]
 
     # Form creation. The university and year of next season must be selected and then submitted prior
     # to processing the roster file.
@@ -44,8 +63,16 @@ def _(mo):
     return (university_season_form,)
 
 
-@app.cell(hide_code=True)
-def _(find_project_path, mo, pl, schema_overrides, university_season_form):
+@app.cell
+def _(
+    find_project_path,
+    load_roster_from_github_repo,
+    load_roster_locally,
+    mo,
+    running_locally,
+    schema_overrides,
+    university_season_form,
+):
     # Stop execution if the form has not been submitted.
     mo.stop(
         university_season_form.value is None,
@@ -64,61 +91,51 @@ def _(find_project_path, mo, pl, schema_overrides, university_season_form):
         ),
     )
 
-    # Path to the project's `data` directory.
-    _project_path = find_project_path("cfb-analysis")
-    data_path = _project_path / "data"
-
-    # Expected season directory path.
-    season_path = data_path / "images" / f"{university}" / f"{season}"
-
-    # Check if the `season` directory exists and create it if it doesn't.
-    if not season_path.exists():
-        season_path.mkdir(parents=True)
-        print(
-            f"Created directory: {season_path.name}",
-            f"At location: {season_path}",
-            sep="\n",
-            end="\n\n",
-        )
-
-    # Path to the roster excel file based on the university chosen for analysis.
-    _roster_file_path = data_path / "datasets" / f"roster_{university}.xlsx"
-
-    # Create the `roster` dataframe from the excel file.
-    try:
-        roster = pl.read_excel(
-            _roster_file_path,
-            sheet_name=season,
+    if running_locally:
+        # Path to the project's `data` directory and the expected season directory (it might not exist).
+        _project_path = find_project_path("cfb-analysis")
+        _data_path = _project_path / "data"
+        season_path = _data_path / "images" / f"{university}" / f"{season}"
+        roster = load_roster_locally(
+            data_path=_data_path,
+            university=university,
+            season=season,
             schema_overrides=schema_overrides,
         )
-
-        print(
-            f"The {season} roster for {' '.join(university.split('_')).title()} was loaded successfully."
+        # Check if the `season` directory exists and create it if it doesn't.
+        if not season_path.exists():
+            season_path.mkdir(parents=True)
+            print(
+                f"Created new season directory for {university}: {season_path.name}",
+                f"At location: {season_path}",
+                sep="\n",
+            )
+    else:
+        roster = load_roster_from_github_repo(
+            university=university, season=season, schema_overrides=schema_overrides
         )
-    except (ValueError, FileNotFoundError) as e:
-        print(e)
-        mo.stop(True, mo.md("**Execution halted.**"))
-    return data_path, roster, season, season_path, university
+    return roster, season, season_path, university
 
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(
-        r"""
-        ## Exploratory Analysis
-        ### Shared Dataframes
-        | dataframe          | description                                                                                                                              |
-        |:-------------------|:-----------------------------------------------------------------------------------------------------------------------------------------|
-        | `positions`        | the unique set of positions                                                                                                              |
-        | `groups`           | the unique set of position groups                                                                                                        |
-        | `secondary_groups` | the unique set of secondary position groups                                                                                              |
-        | `dev_traits`       | the unique set of dev traits. An index column named `order` is assigned and will be used to order the stacking of the stacked bar charts |
-        """
-    )
+    mo.md(r"""## Roster Viewer""")
     return
 
 
 @app.cell(hide_code=True)
+def _(mo, roster):
+    mo.ui.dataframe(roster, page_size=17)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""## Exploratory Analysis""")
+    return
+
+
+@app.cell
 def _(dev_trait_enum, pl, roster):
     positions = roster.select("position").unique()
     groups = roster.select("group").unique()
@@ -164,6 +181,7 @@ def _(
     color_2,
     mo,
     player_classes,
+    running_locally,
     season,
     season_path,
     title_font_size,
@@ -203,10 +221,15 @@ def _(
         )
     )
 
-    # Save the chart as an image.
-    _player_classes_chart.save(
-        season_path / f"{season}_player_classes_{university}.png", scale_factor=2.0
-    )
+    if running_locally:
+        # Save the chart as an image.
+        _player_classes_chart.save(
+            season_path / f"{season}_player_classes_{university}.png", scale_factor=2.0
+        )
+    else:
+        print(
+            "Skipped saving chart as an image since app is running as a static github page."
+        )
 
     mo.vstack([mo.ui.altair_chart(_player_classes_chart)], align="center")
     return
@@ -214,41 +237,36 @@ def _(
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(
-        r"""
-        ### Dev Traits per Position
-        | dataframe                   | description                                                                                                                                 |
-        |:--------------------------  |:--------------------------------------------------------------------------------------------------------------------------------------------|
-        | `_position_dev_combos`      | dataframe of the cross join (cartesian product) of all positions with all dev traits                                                        |
-        | `dev_per_position`          | all dev traits per position including rows where there are no players of a given position-dev combination                                   |
-        | `star_elite_per_position`   | all star and elite dev traits per position including rows where there are no players of a given position-star or position-elite combination |
-        | `dev_per_position_pipeline` | all dev traits per position per class                                                                                                       |
-        """
-    )
+    mo.md(r"""### Dev Traits per Position""")
     return
 
 
-@app.cell(hide_code=True)
+@app.cell
 def _(dev_traits, pl, positions, roster):
-    # Create the cartesian product of positions and dev traits.
+    # Dataframe of the cross join (cartesian product) of all positions with all dev traits.
     _position_dev_combos = positions.join(dev_traits, how="cross")
 
-    # Minimal set of dev traits per position (does not include dev trait and position combos that have a count of 0).
-    dev_per_position = (
+    # Minimal set of dev traits per position (does not include dev trait and position combos
+    # that have a count of 0).
+    min_dev_per_position = (
         roster.group_by(["position", "dev_trait"])
         .len("count")
         .sort(["position", "dev_trait"])
     )
 
-    # Maximal set of dev traits per position (includes dev trait and position combos that have a count of 0).
+    # All dev traits per position including rows where there are no players of a given
+    # position-dev combination. This is the maximal set of dev traits per position.
     dev_per_position = _position_dev_combos.join(
-        dev_per_position, how="left", on=["position", "dev_trait"]
+        min_dev_per_position, how="left", on=["position", "dev_trait"]
     ).fill_null(0)
 
+    # All star and elite dev traits per position including rows where there are no players
+    # of a given position-star or position-elite combination.
     star_elite_per_position = dev_per_position.filter(
         pl.col("dev_trait").is_in(["elite", "star"])
     )
 
+    # All dev traits per position per class.
     dev_per_position_pipeline = roster.filter(pl.col("dev_trait").is_not_null())
     dev_per_position_pipeline = dev_per_position_pipeline.group_by(
         ["position", "class", "dev_trait"]
@@ -256,21 +274,12 @@ def _(dev_traits, pl, positions, roster):
     dev_per_position_pipeline = dev_per_position_pipeline.join(
         dev_traits, how="left", on="dev_trait"
     )
-
-    # Vertical stack of all the dataframes created in this cell.
-    # mo.vstack(
-    #     [
-    #         create_dataframe_markdown("_position_dev_combos"),
-    #         _position_dev_combos,
-    #         create_dataframe_markdown("dev_per_position"),
-    #         dev_per_position,
-    #         create_dataframe_markdown("star_elite_per_position"),
-    #         star_elite_per_position,
-    #         create_dataframe_markdown("dev_per_position_pipeline"),
-    #         dev_per_position_pipeline,
-    #     ]
-    # )
-    return dev_per_position, dev_per_position_pipeline, star_elite_per_position
+    return (
+        dev_per_position,
+        dev_per_position_pipeline,
+        min_dev_per_position,
+        star_elite_per_position,
+    )
 
 
 @app.cell(hide_code=True)
@@ -286,6 +295,7 @@ def _(
     dev_y_scale_max,
     mo,
     positions,
+    running_locally,
     season,
     season_path,
     star_elite_per_position,
@@ -402,17 +412,23 @@ def _(
         )
     )
 
-    # Save the charts as images.
-    _dev_trait_chart.save(
-        season_path / f"{season}_dev_per_position_{university}.png", scale_factor=2.0
-    )
-    _star_elite_chart.save(
-        season_path / f"{season}_star_elite_per_position_{university}.png", scale_factor=2.0
-    )
-    _dev_per_position_pipeline_chart.save(
-        season_path / f"{season}_dev_per_position_pipeline_{university}.png",
-        scale_factor=2.0,
-    )
+    if running_locally:
+        # Save the charts as images.
+        _dev_trait_chart.save(
+            season_path / f"{season}_dev_per_position_{university}.png", scale_factor=2.0
+        )
+        _star_elite_chart.save(
+            season_path / f"{season}_star_elite_per_position_{university}.png",
+            scale_factor=2.0,
+        )
+        _dev_per_position_pipeline_chart.save(
+            season_path / f"{season}_dev_per_position_pipeline_{university}.png",
+            scale_factor=2.0,
+        )
+    else:
+        print(
+            "Skipped saving chart as an image since app is running as a static github page."
+        )
 
     # Stack the charts for viewing.
     mo.vstack(
@@ -429,39 +445,34 @@ def _(
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(
-        """
-        ### Dev Traits per Group
-        | dataframe              | description                                                                                                                           |
-        |:-----------------------|:--------------------------------------------------------------------------------------------------------------------------------------|
-        | `_group_dev_combos`    | dataframe of the cross join (cartesian product) of all groups with all dev traits                                                     |
-        | `_dev_per_group_pre`   | all dev traits per group. This is the minimal set - does not include rows where there are no players of a given group-dev combination |
-        | `dev_per_group`        | all dev traits per group including rows where there are no players of a given group-dev combination                                   |
-        | `star_elite_per_group` | all star and elite dev traits per group including rows where there are no players of a given group-star or group-elite combination    |
-        """
-    )
+    mo.md("""### Dev Traits per Group""")
     return
 
 
-@app.cell(hide_code=True)
+@app.cell
 def _(dev_traits, groups, pl, roster):
-    # Create the cartesian product of groups and dev traits.
+    # Dataframe of the cross join (cartesian product) of all groups with all dev traits.
     _group_dev_combos = groups.join(dev_traits, how="cross")
 
-    # Minimal set of dev traits per group (does not include dev trait and group combos that have a count of 0).
+    # Minimal set of dev traits per group (does not include dev trait and group combos that
+    # have a count of 0).
     dev_per_group = (
         roster.group_by(["group", "dev_trait"]).len("count").sort(["group", "dev_trait"])
     )
 
-    # Maximal set of dev traits per group (includes dev trait and group combos that have a count of 0).
+    # All dev traits per group including rows where there are no players of a given
+    # group-dev combination. This is the maximal set of dev traits per group.
     dev_per_group = _group_dev_combos.join(
         dev_per_group, how="left", on=["group", "dev_trait"]
     ).fill_null(0)
 
+    # All star and elite dev traits per group including rows where there are no players of a
+    # given group-star or group-elite combination.
     star_elite_per_group = dev_per_group.filter(
         pl.col("dev_trait").is_in(["elite", "star"])
     )
 
+    # All dev traits per group per class.
     dev_per_group_pipeline = roster.filter(pl.col("dev_trait").is_not_null())
     dev_per_group_pipeline = dev_per_group_pipeline.group_by(
         ["group", "class", "dev_trait"]
@@ -469,20 +480,6 @@ def _(dev_traits, groups, pl, roster):
     dev_per_group_pipeline = dev_per_group_pipeline.join(
         dev_traits, how="left", on="dev_trait"
     )
-
-    # Vertical stack of all the dataframes created in this cell.
-    # mo.vstack(
-    #     [
-    #         create_dataframe_markdown("_group_dev_combos"),
-    #         _group_dev_combos,
-    #         create_dataframe_markdown("dev_per_group"),
-    #         dev_per_group,
-    #         create_dataframe_markdown("star_elite_per_group"),
-    #         star_elite_per_group,
-    #         create_dataframe_markdown("dev_per_group_pipeline"),
-    #         dev_per_group_pipeline,
-    #     ]
-    # )
     return dev_per_group, dev_per_group_pipeline, star_elite_per_group
 
 
@@ -499,6 +496,7 @@ def _(
     dev_y_scale_max,
     groups,
     mo,
+    running_locally,
     season,
     season_path,
     star_elite_per_group,
@@ -615,16 +613,23 @@ def _(
         )
     )
 
-    # Save the charts as images.
-    _dev_trait_chart.save(
-        season_path / f"{season}_dev_per_group_{university}.png", scale_factor=2.0
-    )
-    _star_elite_chart.save(
-        season_path / f"{season}_star_elite_per_group_{university}.png", scale_factor=2.0
-    )
-    _dev_per_group_pipeline_chart.save(
-        season_path / f"{season}_dev_per_group_pipeline_{university}.png", scale_factor=2.0
-    )
+    if running_locally:
+        # Save the charts as images.
+        _dev_trait_chart.save(
+            season_path / f"{season}_dev_per_group_{university}.png", scale_factor=2.0
+        )
+        _star_elite_chart.save(
+            season_path / f"{season}_star_elite_per_group_{university}.png",
+            scale_factor=2.0,
+        )
+        _dev_per_group_pipeline_chart.save(
+            season_path / f"{season}_dev_per_group_pipeline_{university}.png",
+            scale_factor=2.0,
+        )
+    else:
+        print(
+            "Skipped saving chart as an image since app is running as a static github page."
+        )
 
     # Stack the charts for viewing.
     mo.vstack(
@@ -641,28 +646,34 @@ def _(
 
 @app.cell(hide_code=True)
 def _(mo):
+    overall_slider = mo.ui.slider(start=80, stop=99, step=1, value=85)
+    return (overall_slider,)
+
+
+@app.cell(hide_code=True)
+def _(mo, overall_slider):
     mo.md(
-        r"""
+        f"""
         ### Possible Non-Senior Drafted Players
         #### Qualifications
         - non-senior
         - draft eligible - a true junior, redshirt junior, or a redshirt sophomore
-        - 85 overall (`overall_start`) or higher
+        - {overall_slider} **{overall_slider.value} `overall_start` or higher**
         """
     )
     return
 
 
-@app.cell
-def _(pl, roster):
-    draft_eligible_non_senior = (pl.col("class") == "JR") | (
+@app.cell(hide_code=True)
+def _(overall_slider, pl, roster):
+    _draft_eligible_non_senior = (pl.col("class") == "JR") | (
         (pl.col("class") == "SO") & (pl.col("red_shirt") == True)
     )
 
-    roster.filter(draft_eligible_non_senior & (pl.col("overall_start") >= 85)).sort(
-        "overall_start", descending=True
-    )
-    return (draft_eligible_non_senior,)
+    roster.filter(
+        _draft_eligible_non_senior & (pl.col("overall_start") >= overall_slider.value)
+    ).sort("overall_start", descending=True)
+    return
 
 
 @app.cell(hide_code=True)
@@ -677,30 +688,19 @@ def _(mo):
     return
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(mo, pl, roster):
-    young_players = roster.filter(pl.col("class").is_in(["FR", "SO"]))
+    _young_players = roster.filter(pl.col("class").is_in(["FR", "SO"]))
 
-    mo.plain(
-        young_players.group_by("group")
+    mo.ui.table(
+        _young_players.group_by("group")
         .agg(
             pl.col("overall_start").mean().round(1).alias("avg_overall_start"),
             pl.len().alias("count"),
         )
-        .sort(["avg_overall_start", "count"])
+        .sort(["avg_overall_start", "count"]),
+        pagination=False,
     )
-    return (young_players,)
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""### Roster Viewer""")
-    return
-
-
-@app.cell(hide_code=True)
-def _(mo, roster):
-    mo.ui.dataframe(roster, page_size=85)
     return
 
 
@@ -712,50 +712,57 @@ def _(mo):
 
 @app.cell
 def _():
+    import marimo as mo
+    return (mo,)
+
+
+@app.cell
+def _(mo):
+    # Check if the notebook is running locally.
+    running_locally = mo.notebook_dir() == mo.notebook_location()
+    print(f"Running WASM version of app: {not running_locally}")
+
+    # If this is the WASM version of the app then `micropip` will need to be imported to
+    # install `openpyxl`.
+    if not running_locally:
+        import micropip
+    return micropip, running_locally
+
+
+@app.cell
+async def _(micropip, running_locally):
+    from io import BytesIO
     from pathlib import Path
 
     import altair as alt
-    import marimo as mo
+    import httpx
     import polars as pl
 
-    from utilities import (
-        create_dataframe_markdown,
-        find_project_path,
-        schema_overrides,
-        class_enum,
-        dev_trait_enum,
-    )
+    # `openpyxl` is needed as the engine to read excel files with `pl.read_excel()`.
+    if not running_locally:
+        await micropip.install("openpyxl")
 
-    # Set polars to show enough rows for the young player quality dataframe.
-    pl.Config(tbl_rows=-1)
-    return (
-        Path,
-        alt,
-        class_enum,
-        create_dataframe_markdown,
-        dev_trait_enum,
-        find_project_path,
-        mo,
-        pl,
-        schema_overrides,
-    )
+    # Set polars to show all rows of a dataframe. Assignment is used to suppress output.
+    _ = pl.Config(tbl_rows=-1)
+    return BytesIO, Path, alt, httpx, pl
 
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(r"""### Shared Analysis Data""")
+    mo.md(r"""### Plot Constants""")
     return
 
 
 @app.cell
 def _(mo, university, university_season_form):
+    # Stop execution if the form has not been submitted.
     mo.stop(
         university_season_form.value is None,
         mo.md("**Submit the form above to continue.**"),
     )
 
     # University color schemes.
-    university_colors = {
+    _university_colors = {
         "fresno_state": {
             "color_1": "#1e40af",
             "color_2": "#3b82f6",
@@ -776,13 +783,13 @@ def _(mo, university, university_season_form):
         },
     }
 
-    # Shared color scheme.
-    color_1 = university_colors[university]["color_1"]
-    color_2 = university_colors[university]["color_2"]
-    color_3 = university_colors[university]["color_3"]
-    color_4 = university_colors[university]["color_4"]
+    # Color variables actually used for plotting.
+    color_1 = _university_colors[university]["color_1"]
+    color_2 = _university_colors[university]["color_2"]
+    color_3 = _university_colors[university]["color_3"]
+    color_4 = _university_colors[university]["color_4"]
 
-    # Plot related constants.
+    # Plot constants.
     dev_y_scale_max = 11
     star_elite_y_scale_max = 8
     width = 600
@@ -797,31 +804,209 @@ def _(mo, university, university_season_form):
         dev_y_scale_max,
         star_elite_y_scale_max,
         title_font_size,
-        university_colors,
         width,
     )
 
 
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""### Roster Loading Functions""")
+    return
+
+
+@app.cell
+def _(BytesIO, Path, httpx, mo, pl):
+    PolarsDataType = pl.DataType | type[pl.DataType]
+
+
+    def load_roster_locally(
+        data_path: Path,
+        university: str,
+        season: str,
+        schema_overrides: dict[str, PolarsDataType],
+    ) -> pl.DataFrame:
+        """Load the roster excel file for `university` and `season` in a local environment.
+
+        Parameters
+        ----------
+        data_path : Path
+            Path to the project's data directory.
+        university : str
+            Name of the university being processed.
+        season : str
+            Season being processed.
+        schema_overrides : dict[str, PolarsDataType]
+            Dataframe schema.
+
+        Returns
+        -------
+        pl.DataFrame
+            Roster as a dataframe.
+        """
+        # Path to the roster excel file based on the university chosen for analysis.
+        roster_file_path = data_path / "datasets" / f"roster_{university}.xlsx"
+
+        # Create the `roster` dataframe from the local excel file.
+        try:
+            roster = pl.read_excel(
+                roster_file_path,
+                sheet_name=season,
+                schema_overrides=schema_overrides,
+            )
+
+            print(
+                f"The {season} roster for {' '.join(university.split('_')).title()} was loaded successfully."
+            )
+
+            return roster
+
+        except (ValueError, FileNotFoundError) as e:
+            print(e)
+            mo.stop(
+                True,
+                mo.md("**Failed to load roster data from local file. Execution halted.**"),
+            )
+
+
+    def load_roster_from_github_repo(
+        university: str,
+        season: str,
+        schema_overrides: dict[str, PolarsDataType],
+    ) -> pl.DataFrame:
+        """Load the roster excel file for `university` and `season` in a deployed env.
+
+        Parameters
+        ----------
+        university : str
+            Name of the university being processed.
+        season : str
+            Season being processed
+        schema_overrides : dict[str, PolarsDataType]
+            Dataframe schema.
+
+        Returns
+        -------
+        pl.DataFrame
+            Roster as a dataframe.
+        """
+        # Create the `roster` dataframe from the github repo excel file.
+        try:
+            # Github repo information.
+            gh_user = "cdpeters"
+            gh_repo = "cfb-analysis"
+            gh_branch = "main"
+            gh_domain = "raw.githubusercontent.com"
+
+            # Construct the github url.
+            gh_url = f"https://{gh_domain}/{gh_user}/{gh_repo}/{gh_branch}/data/datasets/roster_{university}.xlsx"
+
+            # Retrieve the excel file.
+            response = httpx.get(gh_url)
+            response.raise_for_status()
+
+            # Load the data from the response.
+            excel_data = BytesIO(response.content)
+            roster = pl.read_excel(
+                excel_data,
+                sheet_name=season,
+                schema_overrides=schema_overrides,
+                engine="openpyxl",
+            )
+
+            print(
+                f"The {season} roster for {' '.join(university.split('_')).title()} was loaded successfully from the github repo '{gh_repo}'."
+            )
+
+            return roster
+
+        except (ValueError, FileNotFoundError, httpx.HTTPStatusError) as e:
+            print(e)
+            mo.stop(
+                True,
+                mo.md(
+                    f"**Failed to load roster data from the github repo '{gh_repo}'. Execution halted.**"
+                ),
+            )
+    return PolarsDataType, load_roster_from_github_repo, load_roster_locally
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""### Schema""")
+    return
+
+
+@app.cell
+def _(pl):
+    # Enums for the `class`, `team`, and `dev_trait` columns.
+    class_enum = pl.Enum(["FR", "SO", "JR", "SR"])
+    # `team_enum` refers to either offense, defense, or special teams.
+    team_enum = pl.Enum(["OFF", "DEF", "ST"])
+    dev_trait_enum = pl.Enum(["normal", "impact", "star", "elite"])
+
+    # Set up the schema overrides for the columns that need it. The `overall_start` and
+    # `overall_end` columns need an override because `polars` does not infer the column as
+    # an integer for roster years that have this data missing.
+    schema_overrides = {
+        "class": class_enum,
+        "position": pl.Categorical(),
+        "group": pl.Categorical(),
+        "secondary_group": pl.Categorical(),
+        "team": team_enum,
+        "archetype": pl.Categorical(),
+        "dev_trait": dev_trait_enum,
+        "overall_start": pl.UInt8,
+        "overall_end": pl.UInt8,
+    }
+    return class_enum, dev_trait_enum, schema_overrides, team_enum
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""### Find Project Path Function""")
+    return
+
+
 @app.cell
 def _(Path):
-    def ensure_season_pathectory(season_path: Path) -> Path:
-        """
-        Check if a directory for the specified season exists.
-        If it doesn't exist, create it.
+    def find_project_path(project_name: str) -> Path:
+        """Find the project path based on the presence of a .git or pyproject.toml file.
 
-        Parameters:
-        -----------
-        season_path : Path
-            Expected path of season directory.
+        Parameters
+        ----------
+        project_name : str
+            Name of the project directory.
 
-        Returns:
-        -----------
+        Returns
+        -------
         Path
-            Path to the season directory
-        """
+            Project path.
 
-        return season_path
-    return (ensure_season_pathectory,)
+        Raises
+        ------
+        FileNotFoundError
+            If a project directory with the mark files is not found.
+        """
+        marker_files = [".git", "pyproject.toml"]
+        current_path = Path().cwd()
+
+        # Check current directory.
+        if current_path.name == project_name and any(
+            (current_path / marker).exists() for marker in marker_files
+        ):
+            return current_path
+
+        # Check parent directories.
+        for parent in current_path.parents:
+            if parent.name == project_name and any(
+                (parent / marker).exists() for marker in marker_files
+            ):
+                return parent
+
+        raise FileNotFoundError(
+            "Could not find a project directory containing either a .git or pyproject.toml file."
+        )
+    return (find_project_path,)
 
 
 if __name__ == "__main__":
