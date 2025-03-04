@@ -46,7 +46,7 @@ jobs:
 
       - name: 📄 Export notebook
         run: |
-          cd notebook
+          cd notebooks
           marimo export html-wasm roster_analysis.py -o dist --mode run --no-show-code
 
       - name: 📦 Upload Pages Artifact
