@@ -3,7 +3,8 @@ import marimo
 __generated_with = "0.11.13"
 app = marimo.App(
     width="medium",
-    css_file="C:\\Users\\cdpet\\Documents\\Post School Coursework\\dev-materials\\configs\\marimo\\theme\\custom-theme.css",
+    css_file="",
+    html_head_file="C:\\Users\\cdpet\\Documents\\Post School Coursework\\data_projects\\cfb-analysis\\notebooks\\public\\head.html",
 )
 
 

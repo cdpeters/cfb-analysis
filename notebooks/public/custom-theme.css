@@ -1,0 +1,18 @@
+/* Font */
+:root {
+    --marimo-monospace-font: "Consolas", monospace;
+    --marimo-text-font: "Segoe UI", serif;
+    --marimo-heading-font: "Segoe UI", serif;
+}
+
+.prose {
+    font-size: 1.2rem;
+}
+
+.marimo-json-output {
+    font-size: .9rem;
+}
+
+.stderr, .stdout {
+    font-size: .9rem;
+}

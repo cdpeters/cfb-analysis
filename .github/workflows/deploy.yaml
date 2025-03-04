@@ -6,6 +6,7 @@ on:
       paths:
         - 'notebooks/roster_analysis.py'
         - 'data/datasets/**'
+        - 'notebooks/public/**'
         - 'pyproject.toml'
         - 'uv.lock'
 
