@@ -1,6 +1,6 @@
 import marimo
 
-__generated_with = "0.11.13"
+__generated_with = "0.11.14"
 app = marimo.App(
     width="medium",
     css_file="",
@@ -21,13 +21,10 @@ def _(mo):
         - The **Roster Viewer** allows you to transform the view of the roster including filtering, grouping, aggregating, and sorting among other operations.
         #### Exploratory Analysis
         - This section contains charts as well as tables with specific filters and/or aggregations applied and includes:
-            - Charts:
-                - **Player Class Distribution**
-                - **Dev Traits per Position**
-                - **Dev Traits per Group**
-            - Tables:
-                - **Possible Non-Senior Drafted Players**
-                - **Young Player Quality**
+            - **Player Class Distribution**
+            - **Dev Traits** (per position and per group)
+            - **Potential Non-Senior Drafted Players**
+            - **Young Player Quality**
         """
     )
     return
@@ -48,7 +45,7 @@ def _(mo):
     # to processing the roster file.
     university_season_form = (
         mo.md("""
-        ### Select **University** and **Season** for roster analysis
+        ### Select **University** and **Season** for roster analysis.
 
         {university_dropdown}
 
@@ -64,7 +61,7 @@ def _(mo):
     return (university_season_form,)
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(
     find_project_path,
     load_roster_from_github_repo,
@@ -120,7 +117,12 @@ def _(
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(r"""## Roster Viewer""")
+    mo.md(
+        r"""
+        ## Roster Viewer
+        The standard view of the roster is shown. Transformations can be applied to create alternate views of the roster. Additionally, the columns names can be clicked on for further transformation options.
+        """
+    )
     return
 
 
@@ -136,7 +138,7 @@ def _(mo):
     return
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(dev_trait_enum, pl, roster):
     positions = roster.select("position").unique()
     groups = roster.select("group").unique()
@@ -151,7 +153,17 @@ def _(dev_trait_enum, pl, roster):
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(r"""### Player Class Distribution""")
+    mo.md(
+        r"""
+        ### Player Class Distribution
+        - There are four classes:
+            - **FR** (freshman)
+            - **SO** (sophomore)
+            - **JR** (junior)
+            - **SR** (senior)
+        - red shirt status: earned by playing a snap in 4 games or less
+        """
+    )
     return
 
 
@@ -209,13 +221,18 @@ def _(
                 ),
                 sort="descending",
             ),
-            order=("red_shirt:O"),
+            order="red_shirt:O",
+            tooltip=[
+                alt.Tooltip("class:N", title="Player Class"),
+                alt.Tooltip("count:Q", title="Players"),
+                alt.Tooltip("red_shirt:N", title="Red Shirt Status"),
+            ],
         )
         .properties(
             width=250,
             height=250,
             title={
-                "text": f"{university.replace('_', ' ').title()} {season} Player Class Distribution",
+                "text": f"{season} Player Class Distribution",
                 "fontSize": title_font_size,
                 "anchor": anchor,
             },
@@ -228,9 +245,7 @@ def _(
             season_path / f"{season}_player_classes_{university}.png", scale_factor=2.0
         )
     else:
-        print(
-            "Skipped saving chart as an image since app is running as a static github page."
-        )
+        print("Skipped saving chart as an image since app is running as a WASM app.")
 
     mo.vstack([mo.ui.altair_chart(_player_classes_chart)], align="center")
     return
@@ -238,11 +253,16 @@ def _(
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(r"""### Dev Traits per Position""")
+    mo.md(
+        r"""
+        ### Dev Traits
+        - There are four dev traits: **normal**, **impact**, **star**, and **elite**
+        """
+    )
     return
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(dev_traits, pl, positions, roster):
     # Dataframe of the cross join (cartesian product) of all positions with all dev traits.
     _position_dev_combos = positions.join(dev_traits, how="cross")
@@ -293,17 +313,16 @@ def _(
     color_4,
     dev_per_position,
     dev_per_position_pipeline,
-    dev_y_scale_max,
+    gap,
     mo,
     positions,
     running_locally,
     season,
     season_path,
     star_elite_per_position,
-    star_elite_y_scale_max,
     title_font_size,
     university,
-    width,
+    width_position,
 ):
     # Define shared plot properties.
     _x_axis = alt.X(
@@ -313,7 +332,7 @@ def _(
         sort=positions["position"].to_list(),
     )
     _y_axis_title = "Players"
-    _legend_title = "Development Trait"
+    _legend_title = "Dev Trait"
 
     # -------------------------------------------------------------------------------
     # Dev traits per position chart.
@@ -325,8 +344,7 @@ def _(
             y=alt.Y(
                 "count:Q",
                 title=_y_axis_title,
-                axis=alt.Axis(tickCount=dev_y_scale_max + 1, format="d"),
-                scale=alt.Scale(domain=[0, dev_y_scale_max]),
+                axis=alt.Axis(format="d"),
             ),
             color=alt.Color(
                 "dev_trait:N",
@@ -337,12 +355,17 @@ def _(
                 ),
             ),
             order="order:O",
+            tooltip=[
+                alt.Tooltip("position:N", title="Position"),
+                alt.Tooltip("count:Q", title="Players"),
+                alt.Tooltip("dev_trait:N", title="Dev Trait"),
+            ],
         )
         .properties(
-            width=width,
-            height=350,
+            width=width_position,
+            height=300,
             title={
-                "text": f"{university.replace('_', ' ').title()} {season} Player Development Traits per Position",
+                "text": f"{season} Player Dev Traits per Position",
                 "fontSize": title_font_size,
                 "anchor": anchor,
             },
@@ -359,8 +382,7 @@ def _(
             y=alt.Y(
                 "count:Q",
                 title=_y_axis_title,
-                axis=alt.Axis(tickCount=star_elite_y_scale_max + 1, format="d"),
-                scale=alt.Scale(domain=[0, star_elite_y_scale_max]),
+                axis=alt.Axis(format="d"),
             ),
             color=alt.Color(
                 "dev_trait:N",
@@ -371,12 +393,17 @@ def _(
                 ),
             ),
             order="order:O",
+            tooltip=[
+                alt.Tooltip("position:N", title="Position"),
+                alt.Tooltip("count:Q", title="Players"),
+                alt.Tooltip("dev_trait:N", title="Dev Trait"),
+            ],
         )
         .properties(
-            width=width,
+            width=width_position,
             height=200,
             title={
-                "text": f"{university.replace('_', ' ').title()} {season} Star and Elite Players per Position",
+                "text": f"{season} Star / Elite Players per Position",
                 "fontSize": title_font_size,
                 "anchor": anchor,
             },
@@ -393,20 +420,25 @@ def _(
             y=alt.Y("count:Q", title="Players"),
             color=alt.Color(
                 "dev_trait:N",
-                title="Development Trait",
+                title="Dev Trait",
                 scale=alt.Scale(
                     domain=["elite", "star", "impact", "normal"],
                     range=[color_1, color_2, color_3, color_4],
                 ),
             ),
             order="order:O",
-            tooltip=["position", "class", "dev_trait", "count"],
+            tooltip=[
+                alt.Tooltip("position:N", title="Position"),
+                alt.Tooltip("count:Q", title="Players"),
+                alt.Tooltip("dev_trait:N", title="Dev Trait"),
+                alt.Tooltip("class:N", title="Class"),
+            ],
         )
-        .properties(width=600, height=100)
+        .properties(width=width_position, height=100)
         .facet(
             row=alt.Row("class:N", sort=["FR", "SO", "JR", "SR"], title="Class"),
             title={
-                "text": f"{university.replace('_', ' ').title()} {season} Player Development Pipeline per Position",
+                "text": f"{season} Player Dev Pipeline per Position",
                 "fontSize": title_font_size,
                 "anchor": anchor,
             },
@@ -427,30 +459,22 @@ def _(
             scale_factor=2.0,
         )
     else:
-        print(
-            "Skipped saving chart as an image since app is running as a static github page."
-        )
+        print("Skipped saving chart as an image since app is running as a WASM app.")
 
     # Stack the charts for viewing.
-    mo.vstack(
+    tab_per_position = mo.vstack(
         [
             mo.ui.altair_chart(_dev_trait_chart),
             mo.ui.altair_chart(_star_elite_chart),
             mo.ui.altair_chart(_dev_per_position_pipeline_chart),
         ],
         align="center",
-        gap=3.0,
+        gap=gap,
     )
-    return
+    return (tab_per_position,)
 
 
 @app.cell(hide_code=True)
-def _(mo):
-    mo.md("""### Dev Traits per Group""")
-    return
-
-
-@app.cell
 def _(dev_traits, groups, pl, roster):
     # Dataframe of the cross join (cartesian product) of all groups with all dev traits.
     _group_dev_combos = groups.join(dev_traits, how="cross")
@@ -494,17 +518,16 @@ def _(
     color_4,
     dev_per_group,
     dev_per_group_pipeline,
-    dev_y_scale_max,
+    gap,
     groups,
     mo,
     running_locally,
     season,
     season_path,
     star_elite_per_group,
-    star_elite_y_scale_max,
     title_font_size,
     university,
-    width,
+    width_group,
 ):
     # Define shared plot properties.
     _x_axis = alt.X(
@@ -514,7 +537,7 @@ def _(
         sort=groups["group"].to_list(),
     )
     _y_axis_title = "Players"
-    _legend_title = "Development Trait"
+    _legend_title = "Dev Trait"
 
     # -------------------------------------------------------------------------------
     # Dev traits per group chart.
@@ -526,8 +549,7 @@ def _(
             y=alt.Y(
                 "count:Q",
                 title=_y_axis_title,
-                axis=alt.Axis(tickCount=dev_y_scale_max + 1, format="d"),
-                scale=alt.Scale(domain=[0, dev_y_scale_max]),
+                axis=alt.Axis(format="d"),
             ),
             color=alt.Color(
                 "dev_trait:N",
@@ -538,12 +560,17 @@ def _(
                 ),
             ),
             order="order:O",
+            tooltip=[
+                alt.Tooltip("group:N", title="Group"),
+                alt.Tooltip("count:Q", title="Players"),
+                alt.Tooltip("dev_trait:N", title="Dev Trait"),
+            ],
         )
         .properties(
-            width=width,
-            height=350,
+            width=width_group,
+            height=330,
             title={
-                "text": f"{university.replace('_', ' ').title()} {season} Player Development Traits per Group",
+                "text": f"{season} Player Dev Traits per Group",
                 "fontSize": title_font_size,
                 "anchor": anchor,
             },
@@ -560,8 +587,7 @@ def _(
             y=alt.Y(
                 "count:Q",
                 title=_y_axis_title,
-                axis=alt.Axis(tickCount=star_elite_y_scale_max + 1, format="d"),
-                scale=alt.Scale(domain=[0, star_elite_y_scale_max]),
+                axis=alt.Axis(format="d"),
             ),
             color=alt.Color(
                 "dev_trait:N",
@@ -572,12 +598,17 @@ def _(
                 ),
             ),
             order="order:O",
+            tooltip=[
+                alt.Tooltip("group:N", title="Group"),
+                alt.Tooltip("count:Q", title="Players"),
+                alt.Tooltip("dev_trait:N", title="Dev Trait"),
+            ],
         )
         .properties(
-            width=width,
-            height=200,
+            width=width_group,
+            height=260,
             title={
-                "text": f"{university.replace('_', ' ').title()} {season} Star and Elite Players per Group",
+                "text": f"{season} Star / Elite Players per Group",
                 "fontSize": title_font_size,
                 "anchor": anchor,
             },
@@ -594,20 +625,25 @@ def _(
             y=alt.Y("count:Q", title="Players"),
             color=alt.Color(
                 "dev_trait:N",
-                title="Development Trait",
+                title="Dev Trait",
                 scale=alt.Scale(
                     domain=["elite", "star", "impact", "normal"],
                     range=[color_1, color_2, color_3, color_4],
                 ),
             ),
             order="order:O",
-            tooltip=["group", "class", "dev_trait", "count"],
+            tooltip=[
+                alt.Tooltip("group:N", title="Group"),
+                alt.Tooltip("count:Q", title="Players"),
+                alt.Tooltip("dev_trait:N", title="Dev Trait"),
+                alt.Tooltip("class:N", title="Class"),
+            ],
         )
-        .properties(width=500, height=100)
+        .properties(width=width_group, height=120)
         .facet(
             row=alt.Row("class:N", sort=["FR", "SO", "JR", "SR"], title="Class"),
             title={
-                "text": f"{university.replace('_', ' ').title()} {season} Player Development Pipeline per Group",
+                "text": f"{season} Player Dev Trait Pipeline per Group",
                 "fontSize": title_font_size,
                 "anchor": anchor,
             },
@@ -628,20 +664,24 @@ def _(
             scale_factor=2.0,
         )
     else:
-        print(
-            "Skipped saving chart as an image since app is running as a static github page."
-        )
+        print("Skipped saving chart as an image since app is running as a WASM app.")
 
     # Stack the charts for viewing.
-    mo.vstack(
+    tab_per_group = mo.vstack(
         [
             mo.ui.altair_chart(_dev_trait_chart),
             mo.ui.altair_chart(_star_elite_chart),
             mo.ui.altair_chart(_dev_per_group_pipeline_chart),
         ],
         align="center",
-        gap=3.0,
+        gap=gap,
     )
+    return (tab_per_group,)
+
+
+@app.cell(hide_code=True)
+def _(mo, tab_per_group, tab_per_position):
+    mo.ui.tabs({"By Position": tab_per_position, "By Group": tab_per_group})
     return
 
 
@@ -655,8 +695,11 @@ def _(mo):
 def _(mo, overall_slider):
     mo.md(
         f"""
-        ### Possible Non-Senior Drafted Players
-        #### Qualifications
+        ### Potential Non-Senior Drafted Players
+        Each season, in addition to the seniors leaving the roster via graduation, there is the potential to lose strongly performing underclassman to the NFL draft. In this analysis, the stand in for performance will be the player's overall rating, specifically the `overall_start` rating which is collected in the preseason. The player's class also matters as the player needs to be in their third year of eligibility in order to declare for the draft.
+
+        Overall ratings in the high 80's are where players start to declare for the draft if eligible. Since the ratings used in the table are from the preseason and player development during the season (an increase in their overall) is common, a slider is provided to adjust the cutoff. The bullet points below summarize the filters that are applied to get the dataframe of potential non-senior drafted players.
+
         - non-senior
         - draft eligible - a true junior, redshirt junior, or a redshirt sophomore
         - {overall_slider} **{overall_slider.value} `overall_start` or higher**
@@ -682,7 +725,7 @@ def _(mo):
     mo.md(
         r"""
         ### Young Player Quality
-        - young player - a freshman or sophomore including redshirted players
+        - young player: a freshman or sophomore including redshirted players
         - the average overall of young players at each position group is used to assess young player quality
         """
     )
@@ -791,21 +834,21 @@ def _(mo, university, university_season_form):
     color_4 = _university_colors[university]["color_4"]
 
     # Plot constants.
-    dev_y_scale_max = 11
-    star_elite_y_scale_max = 8
-    width = 600
-    title_font_size = 16
+    width_position = 650
+    width_group = 500
+    title_font_size = 14
     anchor = "middle"
+    gap = 3
     return (
         anchor,
         color_1,
         color_2,
         color_3,
         color_4,
-        dev_y_scale_max,
-        star_elite_y_scale_max,
+        gap,
         title_font_size,
-        width,
+        width_group,
+        width_position,
     )
 
 
