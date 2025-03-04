@@ -4,7 +4,7 @@ __generated_with = "0.11.13"
 app = marimo.App(
     width="medium",
     css_file="",
-    html_head_file="C:\\Users\\cdpet\\Documents\\Post School Coursework\\data_projects\\cfb-analysis\\notebooks\\public\\head.html",
+    html_head_file="public/head.html",
 )
 
 
@@ -18,7 +18,7 @@ def _(mo):
 
         ### Analysis Sections
         #### Roster Viewer
-        - The **Roster Viewer** allows you to transform the view of the roster including filtering, grouping, aggregating, and sorting among other operations. 
+        - The **Roster Viewer** allows you to transform the view of the roster including filtering, grouping, aggregating, and sorting among other operations.
         #### Exploratory Analysis
         - This section contains charts as well as tables with specific filters and/or aggregations applied and includes:
             - Charts:
