@@ -138,17 +138,54 @@ def _(mo):
     return
 
 
-@app.cell(hide_code=True)
-def _(dev_trait_enum, pl, roster):
-    positions = roster.select("position").unique()
-    groups = roster.select("group").unique()
-    secondary_groups = roster.select("secondary_group").unique()
+@app.cell
+def _(pl, roster):
+    classes = roster.select("class").unique().sort("class")
+    red_shirts = roster.select("red_shirt").unique().sort("red_shirt")
+    dev_traits = roster.select("dev_trait").unique().sort("dev_trait")
+    positions = roster.select("position").unique().sort("position")
+    groups = roster.select("group").unique().sort("group")
+    secondary_groups = roster.select("secondary_group").unique().sort("secondary_group")
 
-    dev_traits = pl.DataFrame(
-        {"dev_trait": ["normal", "impact", "star", "elite"]},
-        schema={"dev_trait": dev_trait_enum},
-    ).with_row_index("order")
-    return dev_traits, groups, positions, secondary_groups
+    # Assign integer ordering in order to preserve class, position, and group ordering
+    # without having to rely on a string sequence (there was an issue where locally the
+    # order was correct but the deployed WASM app had random ordering when relying on a
+    # string sequence instead of an integer sequence).
+    class_order = {cls: index for index, cls in enumerate(classes["class"])}
+    red_shirt_order = {
+        red_shirt: index for index, red_shirt in enumerate(red_shirts["red_shirt"])
+    }
+    dev_trait_order = {
+        dev_trait: index for index, dev_trait in enumerate(dev_traits["dev_trait"])
+    }
+
+    position_order = {
+        position: index for index, position in enumerate(positions["position"])
+    }
+    group_order = {group: index for index, group in enumerate(groups["group"])}
+
+    # Add the ordering columns to the roster dataframe.
+    roster_with_order = roster.with_columns(
+        pl.col("position").replace_strict(position_order).alias("position_order"),
+        pl.col("group").replace_strict(group_order).alias("group_order"),
+        pl.col("class").replace_strict(class_order).alias("class_order"),
+        pl.col("dev_trait").replace_strict(dev_trait_order).alias("dev_trait_order"),
+        pl.col("red_shirt").replace_strict(red_shirt_order).alias("red_shirt_order"),
+    )
+    return (
+        class_order,
+        classes,
+        dev_trait_order,
+        dev_traits,
+        group_order,
+        groups,
+        position_order,
+        positions,
+        red_shirt_order,
+        red_shirts,
+        roster_with_order,
+        secondary_groups,
+    )
 
 
 @app.cell(hide_code=True)
@@ -167,26 +204,17 @@ def _(mo):
     return
 
 
-@app.cell(hide_code=True)
-def _(class_enum, pl, roster):
-    # Create the order that will be used to ensure class order is correct.
-    _player_class_order = pl.DataFrame(
-        {"class": ["FR", "SO", "JR", "SR"]}, schema={"class": class_enum}
-    ).with_row_index("order")
-
+@app.cell
+def _(roster_with_order):
     # Include grouping by `red_shirt` in order to capture the distribution
     # of red shirts for each class.
-    player_classes = roster.group_by(["class", "red_shirt"]).len("count")
-
-    # Enforce the class order in the `player_classes` dataframe.
-    player_classes = player_classes.join(_player_class_order, on="class", how="left").sort(
-        ["order", "red_shirt"]
+    player_classes = roster_with_order.group_by(["class", "red_shirt", "class_order"]).len(
+        "count"
     )
-    # player_classes
     return (player_classes,)
 
 
-@app.cell(hide_code=True)
+@app.cell
 def _(
     alt,
     anchor,
@@ -209,7 +237,7 @@ def _(
                 "class:N",
                 title="Player Class",
                 axis=alt.Axis(labelAngle=0),
-                sort=["FR", "SO", "JR", "SR"],
+                sort={"field": "class_order"},
             ),
             y=alt.Y("count:Q", title="Players"),
             color=alt.Color(
@@ -219,7 +247,7 @@ def _(
                     domain=[True, False],
                     range=[color_1, color_2],
                 ),
-                sort="descending",
+                sort={"field": "red_shirt_order"},
             ),
             order="red_shirt:O",
             tooltip=[
@@ -262,48 +290,80 @@ def _(mo):
     return
 
 
-@app.cell(hide_code=True)
-def _(dev_traits, pl, positions, roster):
-    # Dataframe of the cross join (cartesian product) of all positions with all dev traits.
+@app.cell
+def _(
+    class_order,
+    classes,
+    dev_trait_order,
+    dev_traits,
+    pl,
+    position_order,
+    positions,
+    roster_with_order,
+):
+    # dev_per_position and star_elite_per_position -----------------------------------------
+    # All possible combinations of positions and dev traits via cartesian product (cross
+    # join).
     _position_dev_combos = positions.join(dev_traits, how="cross")
 
-    # Minimal set of dev traits per position (does not include dev trait and position combos
-    # that have a count of 0).
-    min_dev_per_position = (
-        roster.group_by(["position", "dev_trait"])
-        .len("count")
-        .sort(["position", "dev_trait"])
+    # Counts of dev traits per position, the minimal set (i.e. does not include dev trait
+    # and position combos that have a count of 0).
+    _min_dev_per_position = roster_with_order.group_by(["position", "dev_trait"]).len(
+        "count"
     )
 
-    # All dev traits per position including rows where there are no players of a given
-    # position-dev combination. This is the maximal set of dev traits per position.
-    dev_per_position = _position_dev_combos.join(
-        min_dev_per_position, how="left", on=["position", "dev_trait"]
-    ).fill_null(0)
+    # Counts of dev traits per position including rows where there are no players of a given
+    # position dev trait combination, the maximal set.
+    dev_per_position = (
+        _position_dev_combos.join(
+            _min_dev_per_position, how="left", on=["position", "dev_trait"]
+        )
+        .with_columns(
+            pl.col("count").fill_null(0),
+            pl.col("position").replace_strict(position_order).alias("position_order"),
+            pl.col("dev_trait").replace_strict(dev_trait_order).alias("dev_trait_order"),
+        )
+        .sort(["position_order", "dev_trait_order"])
+    )
 
-    # All star and elite dev traits per position including rows where there are no players
-    # of a given position-star or position-elite combination.
+    # Counts of star and elite dev traits per position including rows where there are no
+    # players of a given position-star or position-elite combination.
     star_elite_per_position = dev_per_position.filter(
         pl.col("dev_trait").is_in(["elite", "star"])
     )
 
-    # All dev traits per position per class.
-    dev_per_position_pipeline = roster.filter(pl.col("dev_trait").is_not_null())
-    dev_per_position_pipeline = dev_per_position_pipeline.group_by(
-        ["position", "class", "dev_trait"]
+    # dev_per_position_pipeline ------------------------------------------------------------
+    # All possible combinations of positions, dev traits, and classes via cartesian product
+    # (cross join). The product is formed via cross join of `_position_dev_combos` with
+    # `classes`.
+    _position_dev_class_combos = _position_dev_combos.join(classes, how="cross")
+
+    # Counts of dev traits per position per class, the minimal set (i.e. does not include
+    # dev trait, position, and class combos that have a count of 0).
+    _min_dev_per_position_pipeline = roster_with_order.group_by(
+        ["position", "dev_trait", "class"]
     ).len("count")
-    dev_per_position_pipeline = dev_per_position_pipeline.join(
-        dev_traits, how="left", on="dev_trait"
+
+    # Counts of dev traits per position per class including rows where there are no players
+    # of a given position, dev trait, and class combination; the maximal set.
+    dev_per_position_pipeline = (
+        _position_dev_class_combos.join(
+            _min_dev_per_position_pipeline,
+            how="left",
+            on=["position", "dev_trait", "class"],
+        )
+        .with_columns(
+            pl.col("count").fill_null(0),
+            pl.col("position").replace_strict(position_order).alias("position_order"),
+            pl.col("dev_trait").replace_strict(dev_trait_order).alias("dev_trait_order"),
+            pl.col("class").replace_strict(class_order).alias("class_order"),
+        )
+        .sort(["position_order", "dev_trait_order", "class_order"])
     )
-    return (
-        dev_per_position,
-        dev_per_position_pipeline,
-        min_dev_per_position,
-        star_elite_per_position,
-    )
+    return dev_per_position, dev_per_position_pipeline, star_elite_per_position
 
 
-@app.cell(hide_code=True)
+@app.cell
 def _(
     alt,
     anchor,
@@ -315,7 +375,6 @@ def _(
     dev_per_position_pipeline,
     gap,
     mo,
-    positions,
     running_locally,
     season,
     season_path,
@@ -329,7 +388,7 @@ def _(
         "position:N",
         title="Position",
         axis=alt.Axis(labelAngle=0),
-        sort=positions["position"].to_list(),
+        sort={"field": "position_order"},
     )
     _y_axis_title = "Players"
     _legend_title = "Dev Trait"
@@ -353,8 +412,9 @@ def _(
                     domain=["elite", "star", "impact", "normal"],
                     range=[color_1, color_2, color_3, color_4],
                 ),
+                sort={"field": "dev_trait_order"},
             ),
-            order="order:O",
+            order="dev_trait_order:O",
             tooltip=[
                 alt.Tooltip("position:N", title="Position"),
                 alt.Tooltip("count:Q", title="Players"),
@@ -391,8 +451,9 @@ def _(
                     domain=["elite", "star"],
                     range=[color_1, color_2],
                 ),
+                sort={"field": "dev_trait_order"},
             ),
-            order="order:O",
+            order="dev_trait_order:O",
             tooltip=[
                 alt.Tooltip("position:N", title="Position"),
                 alt.Tooltip("count:Q", title="Players"),
@@ -410,39 +471,49 @@ def _(
         )
     )
 
-    # -------------------------------------------------------------------------------
-    # Player development pipeline per position chart.
-    _dev_per_position_pipeline_chart = (
-        alt.Chart(dev_per_position_pipeline)
-        .mark_bar()
-        .encode(
-            x=_x_axis,
-            y=alt.Y("count:Q", title="Players"),
-            color=alt.Color(
-                "dev_trait:N",
-                title="Dev Trait",
-                scale=alt.Scale(
-                    domain=["elite", "star", "impact", "normal"],
-                    range=[color_1, color_2, color_3, color_4],
-                ),
+    # Build the pipeline chart in stages due to issues with ordering. Apply ordering in both
+    # the encode and facet steps to ensure the correct ordering is kept in the final chart.
+    _dev_trait_pipeline_base = alt.Chart(dev_per_position_pipeline).mark_bar()
+
+    # Apply the encoding with the correct ordering.
+    _dev_trait_pipeline_encode = _dev_trait_pipeline_base.encode(
+        x=_x_axis,
+        y=alt.Y("count:Q", title="Players"),
+        color=alt.Color(
+            "dev_trait:N",
+            title="Dev Trait",
+            scale=alt.Scale(
+                domain=["elite", "star", "impact", "normal"],
+                range=[color_1, color_2, color_3, color_4],
             ),
-            order="order:O",
-            tooltip=[
-                alt.Tooltip("position:N", title="Position"),
-                alt.Tooltip("count:Q", title="Players"),
-                alt.Tooltip("dev_trait:N", title="Dev Trait"),
-                alt.Tooltip("class:N", title="Class"),
-            ],
+            sort={"field": "dev_trait_order"},
+        ),
+        order="dev_trait_order:O",
+        tooltip=[
+            alt.Tooltip("position:N", title="Position"),
+            alt.Tooltip("count:Q", title="Players"),
+            alt.Tooltip("dev_trait:N", title="Dev Trait"),
+            alt.Tooltip("class:N", title="Class"),
+        ],
+    ).properties(width=width_position, height=120)
+
+    # Apply the faceting with the correct ordering.
+    _dev_trait_pipeline_chart = (
+        _dev_trait_pipeline_encode.facet(
+            row=alt.Row(
+                "class:N",
+                sort={"field": "class_order"},
+                title="Class",
+            ),
         )
-        .properties(width=width_position, height=100)
-        .facet(
-            row=alt.Row("class:N", sort=["FR", "SO", "JR", "SR"], title="Class"),
+        .properties(
             title={
-                "text": f"{season} Player Dev Pipeline per Position",
+                "text": f"{season} Player Dev Trait Pipeline per Position",
                 "fontSize": title_font_size,
                 "anchor": anchor,
             },
         )
+        .configure_view(stroke=None)
     )
 
     if running_locally:
@@ -454,7 +525,7 @@ def _(
             season_path / f"{season}_star_elite_per_position_{university}.png",
             scale_factor=2.0,
         )
-        _dev_per_position_pipeline_chart.save(
+        _dev_trait_pipeline_chart.save(
             season_path / f"{season}_dev_per_position_pipeline_{university}.png",
             scale_factor=2.0,
         )
@@ -466,7 +537,7 @@ def _(
         [
             mo.ui.altair_chart(_dev_trait_chart),
             mo.ui.altair_chart(_star_elite_chart),
-            mo.ui.altair_chart(_dev_per_position_pipeline_chart),
+            mo.ui.altair_chart(_dev_trait_pipeline_chart),
         ],
         align="center",
         gap=gap,
@@ -474,41 +545,76 @@ def _(
     return (tab_per_position,)
 
 
-@app.cell(hide_code=True)
-def _(dev_traits, groups, pl, roster):
-    # Dataframe of the cross join (cartesian product) of all groups with all dev traits.
+@app.cell
+def _(
+    class_order,
+    classes,
+    dev_trait_order,
+    dev_traits,
+    group_order,
+    groups,
+    pl,
+    roster_with_order,
+):
+    # dev_per_group and star_elite_per_group -----------------------------------------
+    # All possible combinations of groups and dev traits via cartesian product (cross
+    # join).
     _group_dev_combos = groups.join(dev_traits, how="cross")
 
-    # Minimal set of dev traits per group (does not include dev trait and group combos that
-    # have a count of 0).
+    # Counts of dev traits per group, the minimal set (i.e. does not include dev trait
+    # and group combos that have a count of 0).
+    _min_dev_per_group = roster_with_order.group_by(["group", "dev_trait"]).len("count")
+
+    # Counts of dev traits per group including rows where there are no players of a given
+    # group dev trait combination, the maximal set.
     dev_per_group = (
-        roster.group_by(["group", "dev_trait"]).len("count").sort(["group", "dev_trait"])
+        _group_dev_combos.join(_min_dev_per_group, how="left", on=["group", "dev_trait"])
+        .with_columns(
+            pl.col("count").fill_null(0),
+            pl.col("group").replace_strict(group_order).alias("group_order"),
+            pl.col("dev_trait").replace_strict(dev_trait_order).alias("dev_trait_order"),
+        )
+        .sort(["group_order", "dev_trait_order"])
     )
 
-    # All dev traits per group including rows where there are no players of a given
-    # group-dev combination. This is the maximal set of dev traits per group.
-    dev_per_group = _group_dev_combos.join(
-        dev_per_group, how="left", on=["group", "dev_trait"]
-    ).fill_null(0)
-
-    # All star and elite dev traits per group including rows where there are no players of a
-    # given group-star or group-elite combination.
+    # Counts of star and elite dev traits per group including rows where there are no
+    # players of a given group-star or group-elite combination.
     star_elite_per_group = dev_per_group.filter(
         pl.col("dev_trait").is_in(["elite", "star"])
     )
 
-    # All dev traits per group per class.
-    dev_per_group_pipeline = roster.filter(pl.col("dev_trait").is_not_null())
-    dev_per_group_pipeline = dev_per_group_pipeline.group_by(
-        ["group", "class", "dev_trait"]
+    # dev_per_group_pipeline ------------------------------------------------------------
+    # All possible combinations of groups, dev traits, and classes via cartesian product
+    # (cross join). The product is formed via cross join of `_group_dev_combos` with
+    # `classes`.
+    _group_dev_class_combos = _group_dev_combos.join(classes, how="cross")
+
+    # Counts of dev traits per group per class, the minimal set (i.e. does not include
+    # dev trait, group, and class combos that have a count of 0).
+    _min_dev_per_group_pipeline = roster_with_order.group_by(
+        ["group", "dev_trait", "class"]
     ).len("count")
-    dev_per_group_pipeline = dev_per_group_pipeline.join(
-        dev_traits, how="left", on="dev_trait"
+
+    # Counts of dev traits per group per class including rows where there are no players
+    # of a given group, dev trait, and class combination; the maximal set.
+    dev_per_group_pipeline = (
+        _group_dev_class_combos.join(
+            _min_dev_per_group_pipeline,
+            how="left",
+            on=["group", "dev_trait", "class"],
+        )
+        .with_columns(
+            pl.col("count").fill_null(0),
+            pl.col("group").replace_strict(group_order).alias("group_order"),
+            pl.col("dev_trait").replace_strict(dev_trait_order).alias("dev_trait_order"),
+            pl.col("class").replace_strict(class_order).alias("class_order"),
+        )
+        .sort(["group_order", "dev_trait_order", "class_order"])
     )
     return dev_per_group, dev_per_group_pipeline, star_elite_per_group
 
 
-@app.cell(hide_code=True)
+@app.cell
 def _(
     alt,
     anchor,
@@ -519,7 +625,6 @@ def _(
     dev_per_group,
     dev_per_group_pipeline,
     gap,
-    groups,
     mo,
     running_locally,
     season,
@@ -534,7 +639,7 @@ def _(
         "group:N",
         title="Group",
         axis=alt.Axis(labelAngle=0),
-        sort=groups["group"].to_list(),
+        sort={"field": "group_order"},
     )
     _y_axis_title = "Players"
     _legend_title = "Dev Trait"
@@ -558,8 +663,9 @@ def _(
                     domain=["elite", "star", "impact", "normal"],
                     range=[color_1, color_2, color_3, color_4],
                 ),
+                sort={"field": "dev_trait_order"},
             ),
-            order="order:O",
+            order="dev_trait_order:O",
             tooltip=[
                 alt.Tooltip("group:N", title="Group"),
                 alt.Tooltip("count:Q", title="Players"),
@@ -596,8 +702,9 @@ def _(
                     domain=["elite", "star"],
                     range=[color_1, color_2],
                 ),
+                sort={"field": "dev_trait_order"},
             ),
-            order="order:O",
+            order="dev_trait_order:O",
             tooltip=[
                 alt.Tooltip("group:N", title="Group"),
                 alt.Tooltip("count:Q", title="Players"),
@@ -615,39 +722,49 @@ def _(
         )
     )
 
-    # -------------------------------------------------------------------------------
-    # Player development pipeline per group chart.
-    _dev_per_group_pipeline_chart = (
-        alt.Chart(dev_per_group_pipeline)
-        .mark_bar()
-        .encode(
-            x=_x_axis,
-            y=alt.Y("count:Q", title="Players"),
-            color=alt.Color(
-                "dev_trait:N",
-                title="Dev Trait",
-                scale=alt.Scale(
-                    domain=["elite", "star", "impact", "normal"],
-                    range=[color_1, color_2, color_3, color_4],
-                ),
+    # Build the pipeline chart in stages due to issues with ordering. Apply ordering in both
+    # the encode and facet steps to ensure the correct ordering is kept in the final chart.
+    _dev_trait_pipeline_base = alt.Chart(dev_per_group_pipeline).mark_bar()
+
+    # Apply the encoding with the correct ordering.
+    _dev_trait_pipeline_encode = _dev_trait_pipeline_base.encode(
+        x=_x_axis,
+        y=alt.Y("count:Q", title="Players"),
+        color=alt.Color(
+            "dev_trait:N",
+            title="Dev Trait",
+            scale=alt.Scale(
+                domain=["elite", "star", "impact", "normal"],
+                range=[color_1, color_2, color_3, color_4],
             ),
-            order="order:O",
-            tooltip=[
-                alt.Tooltip("group:N", title="Group"),
-                alt.Tooltip("count:Q", title="Players"),
-                alt.Tooltip("dev_trait:N", title="Dev Trait"),
-                alt.Tooltip("class:N", title="Class"),
-            ],
+            sort={"field": "dev_trait_order"},
+        ),
+        order="dev_trait_order:O",
+        tooltip=[
+            alt.Tooltip("group:N", title="Group"),
+            alt.Tooltip("count:Q", title="Players"),
+            alt.Tooltip("dev_trait:N", title="Dev Trait"),
+            alt.Tooltip("class:N", title="Class"),
+        ],
+    ).properties(width=width_group, height=120)
+
+    # Apply the faceting with the correct ordering.
+    _dev_trait_pipeline_chart = (
+        _dev_trait_pipeline_encode.facet(
+            row=alt.Row(
+                "class:N",
+                sort={"field": "class_order"},
+                title="Class",
+            ),
         )
-        .properties(width=width_group, height=120)
-        .facet(
-            row=alt.Row("class:N", sort=["FR", "SO", "JR", "SR"], title="Class"),
+        .properties(
             title={
                 "text": f"{season} Player Dev Trait Pipeline per Group",
                 "fontSize": title_font_size,
                 "anchor": anchor,
             },
         )
+        .configure_view(stroke=None)
     )
 
     if running_locally:
@@ -659,7 +776,7 @@ def _(
             season_path / f"{season}_star_elite_per_group_{university}.png",
             scale_factor=2.0,
         )
-        _dev_per_group_pipeline_chart.save(
+        _dev_trait_pipeline_chart.save(
             season_path / f"{season}_dev_per_group_pipeline_{university}.png",
             scale_factor=2.0,
         )
@@ -671,7 +788,7 @@ def _(
         [
             mo.ui.altair_chart(_dev_trait_chart),
             mo.ui.altair_chart(_star_elite_chart),
-            mo.ui.altair_chart(_dev_per_group_pipeline_chart),
+            mo.ui.altair_chart(_dev_trait_pipeline_chart),
         ],
         align="center",
         gap=gap,
@@ -679,13 +796,13 @@ def _(
     return (tab_per_group,)
 
 
-@app.cell(hide_code=True)
+@app.cell
 def _(mo, tab_per_group, tab_per_position):
     mo.ui.tabs({"By Position": tab_per_position, "By Group": tab_per_group})
     return
 
 
-@app.cell(hide_code=True)
+@app.cell
 def _(mo):
     overall_slider = mo.ui.slider(start=80, stop=99, step=1, value=85)
     return (overall_slider,)
@@ -732,7 +849,7 @@ def _(mo):
     return
 
 
-@app.cell(hide_code=True)
+@app.cell
 def _(mo, pl, roster):
     _young_players = roster.filter(pl.col("class").is_in(["FR", "SO"]))
 
@@ -754,13 +871,13 @@ def _(mo):
     return
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _():
     import marimo as mo
     return (mo,)
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(mo):
     # Check if the notebook is running locally.
     running_locally = mo.notebook_dir() == mo.notebook_location()
@@ -773,7 +890,7 @@ def _(mo):
     return micropip, running_locally
 
 
-@app.cell
+@app.cell(hide_code=True)
 async def _(micropip, running_locally):
     from io import BytesIO
     from pathlib import Path
@@ -797,7 +914,7 @@ def _(mo):
     return
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(mo, university, university_season_form):
     # Stop execution if the form has not been submitted.
     mo.stop(
@@ -858,7 +975,7 @@ def _(mo):
     return
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(BytesIO, Path, httpx, mo, pl):
     PolarsDataType = pl.DataType | type[pl.DataType]
 
@@ -980,7 +1097,7 @@ def _(mo):
     return
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(pl):
     # Enums for the `class`, `team`, and `dev_trait` columns.
     class_enum = pl.Enum(["FR", "SO", "JR", "SR"])
@@ -1011,7 +1128,7 @@ def _(mo):
     return
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(Path):
     def find_project_path(project_name: str) -> Path:
         """Find the project path based on the presence of a .git or pyproject.toml file.
