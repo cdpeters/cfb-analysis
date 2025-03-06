@@ -16,10 +16,12 @@ def _(mo):
 
         The following app can be used to explore your College Football 25 dynasty roster. The UI elements are interactive, feel free to interact with an element's controls to see new views of the data.
 
-        ### Analysis Sections
-        #### Roster Viewer
+        ## Overview of Sections
+
+        ### Roster Viewer
         - The **Roster Viewer** allows you to transform the view of the roster including filtering, grouping, aggregating, and sorting among other operations.
-        #### Exploratory Analysis
+
+        ### Exploratory Analysis
         - This section contains charts as well as tables with specific filters and/or aggregations applied and includes:
             - **Player Class Distribution**
             - **Dev Traits** (per position and per group)
@@ -198,7 +200,7 @@ def _(mo):
             - **SO** (sophomore)
             - **JR** (junior)
             - **SR** (senior)
-        - red shirt status: earned by playing a snap in 4 games or less
+        - red shirt status: earned by playing a snap in 4 games or less within a given season
         """
     )
     return
@@ -285,8 +287,15 @@ def _(mo):
         r"""
         ### Dev Traits
         - There are four dev traits: **normal**, **impact**, **star**, and **elite**
+        > Note: the UI element below is a carousel with three charts for each tab. Click on the left or right arrows on the sides of the carousel or click on the three dots at the bottom to move through the images.
         """
     )
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo, running_locally):
+    mo.md(r"""#### Dev Traits per Position""") if running_locally else None
     return
 
 
@@ -373,7 +382,7 @@ def _(
     color_4,
     dev_per_position,
     dev_per_position_pipeline,
-    gap,
+    height_pipeline,
     mo,
     running_locally,
     season,
@@ -393,8 +402,7 @@ def _(
     _y_axis_title = "Players"
     _legend_title = "Dev Trait"
 
-    # -------------------------------------------------------------------------------
-    # Dev traits per position chart.
+    # Dev traits per position chart --------------------------------------------------------
     _dev_trait_chart = (
         alt.Chart(dev_per_position)
         .mark_bar()
@@ -432,8 +440,7 @@ def _(
         )
     )
 
-    # -------------------------------------------------------------------------------
-    # Star and elite players per position chart.
+    # Star and elite players per position chart --------------------------------------------
     _star_elite_chart = (
         alt.Chart(star_elite_per_position)
         .mark_bar()
@@ -471,6 +478,7 @@ def _(
         )
     )
 
+    # Dev traits per position pipeline chart -----------------------------------------------
     # Build the pipeline chart in stages due to issues with ordering. Apply ordering in both
     # the encode and facet steps to ensure the correct ordering is kept in the final chart.
     _dev_trait_pipeline_base = alt.Chart(dev_per_position_pipeline).mark_bar()
@@ -495,7 +503,7 @@ def _(
             alt.Tooltip("dev_trait:N", title="Dev Trait"),
             alt.Tooltip("class:N", title="Class"),
         ],
-    ).properties(width=width_position, height=120)
+    ).properties(width=width_position, height=height_pipeline)
 
     # Apply the faceting with the correct ordering.
     _dev_trait_pipeline_chart = (
@@ -532,17 +540,19 @@ def _(
     else:
         print("Skipped saving chart as an image since app is running as a WASM app.")
 
-    # Stack the charts for viewing.
-    tab_per_position = mo.vstack(
-        [
-            mo.ui.altair_chart(_dev_trait_chart),
-            mo.ui.altair_chart(_star_elite_chart),
-            mo.ui.altair_chart(_dev_trait_pipeline_chart),
-        ],
-        align="center",
-        gap=gap,
-    )
-    return (tab_per_position,)
+    # Create list of charts for a carousel UI element.
+    carousel_per_position = [
+        mo.ui.altair_chart(_dev_trait_chart),
+        mo.ui.altair_chart(_star_elite_chart),
+        mo.ui.altair_chart(_dev_trait_pipeline_chart),
+    ]
+    return (carousel_per_position,)
+
+
+@app.cell(hide_code=True)
+def _(mo, running_locally):
+    mo.md(r"""#### Dev Traits per Group""") if running_locally else None
+    return
 
 
 @app.cell
@@ -624,7 +634,7 @@ def _(
     color_4,
     dev_per_group,
     dev_per_group_pipeline,
-    gap,
+    height_pipeline,
     mo,
     running_locally,
     season,
@@ -644,8 +654,7 @@ def _(
     _y_axis_title = "Players"
     _legend_title = "Dev Trait"
 
-    # -------------------------------------------------------------------------------
-    # Dev traits per group chart.
+    # Dev traits per group chart -----------------------------------------------------------
     _dev_trait_chart = (
         alt.Chart(dev_per_group)
         .mark_bar()
@@ -683,8 +692,7 @@ def _(
         )
     )
 
-    # -------------------------------------------------------------------------------
-    # Star and elite players per group chart.
+    # Star and elite players per group chart -----------------------------------------------
     _star_elite_chart = (
         alt.Chart(star_elite_per_group)
         .mark_bar()
@@ -722,6 +730,7 @@ def _(
         )
     )
 
+    # Dev traits per group pipeline chart --------------------------------------------------
     # Build the pipeline chart in stages due to issues with ordering. Apply ordering in both
     # the encode and facet steps to ensure the correct ordering is kept in the final chart.
     _dev_trait_pipeline_base = alt.Chart(dev_per_group_pipeline).mark_bar()
@@ -746,7 +755,7 @@ def _(
             alt.Tooltip("dev_trait:N", title="Dev Trait"),
             alt.Tooltip("class:N", title="Class"),
         ],
-    ).properties(width=width_group, height=120)
+    ).properties(width=width_group, height=height_pipeline)
 
     # Apply the faceting with the correct ordering.
     _dev_trait_pipeline_chart = (
@@ -756,15 +765,15 @@ def _(
                 sort={"field": "class_order"},
                 title="Class",
             ),
-        )
-        .properties(
+            # spacing=40,
+        ).properties(
             title={
                 "text": f"{season} Player Dev Trait Pipeline per Group",
                 "fontSize": title_font_size,
                 "anchor": anchor,
             },
         )
-        .configure_view(stroke=None)
+        # .configure_view(stroke=None)
     )
 
     if running_locally:
@@ -783,22 +792,33 @@ def _(
     else:
         print("Skipped saving chart as an image since app is running as a WASM app.")
 
-    # Stack the charts for viewing.
-    tab_per_group = mo.vstack(
-        [
-            mo.ui.altair_chart(_dev_trait_chart),
-            mo.ui.altair_chart(_star_elite_chart),
-            mo.ui.altair_chart(_dev_trait_pipeline_chart),
-        ],
-        align="center",
-        gap=gap,
-    )
-    return (tab_per_group,)
+    # Create list of charts for a carousel UI element.
+    carousel_per_group = [
+        mo.ui.altair_chart(_dev_trait_chart),
+        mo.ui.altair_chart(_star_elite_chart),
+        mo.ui.altair_chart(_dev_trait_pipeline_chart),
+    ]
+    return (carousel_per_group,)
+
+
+@app.cell(hide_code=True)
+def _(mo, running_locally):
+    mo.md(r"""#### Display Dev Trait Charts""") if running_locally else None
+    return
 
 
 @app.cell
-def _(mo, tab_per_group, tab_per_position):
-    mo.ui.tabs({"By Position": tab_per_position, "By Group": tab_per_group})
+def _(carousel_per_group, carousel_per_position, mo):
+    mo.ui.tabs(
+        {
+            "By Position": mo.carousel(
+                [mo.hstack([chart], justify="center") for chart in carousel_per_position]
+            ),
+            "By Group": mo.carousel(
+                [mo.hstack([chart], justify="center") for chart in carousel_per_group]
+            ),
+        }
+    )
     return
 
 
@@ -820,6 +840,8 @@ def _(mo, overall_slider):
         - non-senior
         - draft eligible - a true junior, redshirt junior, or a redshirt sophomore
         - {overall_slider} **{overall_slider.value} `overall_start` or higher**
+
+            > Note: the dataframe is sorted first by `group`, then `position`, then `overall_start`.
         """
     )
     return
@@ -833,7 +855,9 @@ def _(overall_slider, pl, roster):
 
     roster.filter(
         _draft_eligible_non_senior & (pl.col("overall_start") >= overall_slider.value)
-    ).sort("overall_start", descending=True)
+    ).drop(["secondary_group", "overall_end"]).sort(
+        ["group", "position", "overall_start"], descending=[False, False, True]
+    )
     return
 
 
@@ -844,6 +868,7 @@ def _(mo):
         ### Young Player Quality
         - young player: a freshman or sophomore including redshirted players
         - the average overall of young players at each position group is used to assess young player quality
+        > Note: the dataframe is sorted by `avg_overall_start` from weakest to strongest positions.
         """
     )
     return
@@ -866,8 +891,8 @@ def _(mo, pl, roster):
 
 
 @app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""## Appendix""")
+def _(mo, running_locally):
+    mo.md(r"""## Appendix""") if running_locally else None
     return
 
 
@@ -909,8 +934,8 @@ async def _(micropip, running_locally):
 
 
 @app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""### Plot Constants""")
+def _(mo, running_locally):
+    mo.md(r"""### Plot Constants""") if running_locally else None
     return
 
 
@@ -953,6 +978,7 @@ def _(mo, university, university_season_form):
     # Plot constants.
     width_position = 650
     width_group = 500
+    height_pipeline = 90
     title_font_size = 14
     anchor = "middle"
     gap = 3
@@ -963,6 +989,7 @@ def _(mo, university, university_season_form):
         color_3,
         color_4,
         gap,
+        height_pipeline,
         title_font_size,
         width_group,
         width_position,
@@ -970,8 +997,8 @@ def _(mo, university, university_season_form):
 
 
 @app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""### Roster Loading Functions""")
+def _(mo, running_locally):
+    mo.md(r"""### Roster Loading Functions""") if running_locally else None
     return
 
 
@@ -1092,8 +1119,8 @@ def _(BytesIO, Path, httpx, mo, pl):
 
 
 @app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""### Schema""")
+def _(mo, running_locally):
+    mo.md(r"""### Schema""") if running_locally else None
     return
 
 
@@ -1123,8 +1150,8 @@ def _(pl):
 
 
 @app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""### Find Project Path Function""")
+def _(mo, running_locally):
+    mo.md(r"""### Find Project Path Function""") if running_locally else None
     return
 
 
