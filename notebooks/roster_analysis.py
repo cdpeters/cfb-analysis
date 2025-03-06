@@ -14,19 +14,21 @@ def _(mo):
         r"""
         # 🏈 College Football 25 Dynasty Roster Analysis 🏈
 
-        The following app can be used to explore your College Football 25 dynasty roster. The UI elements are interactive, feel free to interact with an element's controls to see new views of the data.
+        The following app can be used to explore your College Football 25 (CFB 25) dynasty roster. The UI elements are interactive, feel free to interact with an element's controls to see new views of the data.
 
-        ## Overview of Sections
+        ## Overview
 
         ### Roster Viewer
-        - The **Roster Viewer** allows you to transform the view of the roster including filtering, grouping, aggregating, and sorting among other operations.
+        The **Roster Viewer** allows you to transform the view of the full roster. Transformations include filtering, grouping, aggregating, and sorting among other operations.
 
         ### Exploratory Analysis
-        - This section contains charts as well as tables with specific filters and/or aggregations applied and includes:
-            - **Player Class Distribution**
-            - **Dev Traits** (per position and per group)
-            - **Potential Non-Senior Drafted Players**
-            - **Young Player Quality**
+        This section contains charts as well as specific views of the roster (preapplied transformations).
+
+        #### Sections include:
+        - **Player Class Distribution and Dev Trait per Position/Group**
+        - **Potential Non-Senior Drafted Players**
+        - **Young Player Quality**
+        - **Players to Cut**
         """
     )
     return
@@ -47,7 +49,7 @@ def _(mo):
     # to processing the roster file.
     university_season_form = (
         mo.md("""
-        ### Select **University** and **Season** for roster analysis.
+        ### Select the **University** and **Season** for analysis.
 
         {university_dropdown}
 
@@ -122,7 +124,7 @@ def _(mo):
     mo.md(
         r"""
         ## Roster Viewer
-        The standard view of the roster is shown. Transformations can be applied to create alternate views of the roster. Additionally, the columns names can be clicked on for further transformation options.
+        The standard view of the roster is shown. Transformations can be applied to create alternate views. Additionally, the column names can be clicked on for further transformation options.
         """
     )
     return
@@ -136,7 +138,26 @@ def _(mo, roster):
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(r"""## Exploratory Analysis""")
+    mo.md(
+        r"""
+        ## Exploratory Analysis
+
+        ### Player Class Distribution and Dev Trait per Position/Group
+
+        #### Player Class Distribution
+        - There are four classes:
+            - **FR** (freshman)
+            - **SO** (sophomore)
+            - **JR** (junior)
+            - **SR** (senior)
+        - Red shirt status: earned by playing a snap in 4 games or less within a given season.
+
+        #### Dev Trait per Position/Group
+        - There are four dev traits: **normal**, **impact**, **star**, and **elite**.
+
+        > Note: there are three tabs below containing visualizations. The Dev Traits per Position and Dev Traits per Group tabs are carousel UI elements containing three charts each. Click on the left or right arrows on the sides of the carousel (you have to hover over them to see them) or click on any of the three dots at the bottom, one at a time, to move through the images on those tabs.
+        """
+    )
     return
 
 
@@ -192,17 +213,13 @@ def _(pl, roster):
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(
-        r"""
-        ### Player Class Distribution
-        - There are four classes:
-            - **FR** (freshman)
-            - **SO** (sophomore)
-            - **JR** (junior)
-            - **SR** (senior)
-        - red shirt status: earned by playing a snap in 4 games or less within a given season
-        """
-    )
+    mo.md(r""" """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo, running_locally):
+    mo.md(r"""#### Player Class Distribution""") if running_locally else None
     return
 
 
@@ -222,7 +239,6 @@ def _(
     anchor,
     color_1,
     color_2,
-    mo,
     player_classes,
     running_locally,
     season,
@@ -231,7 +247,7 @@ def _(
     university,
 ):
     # Player class distribution chart.
-    _player_classes_chart = (
+    player_classes_chart = (
         alt.Chart(player_classes)
         .mark_bar()
         .encode(
@@ -260,7 +276,7 @@ def _(
         )
         .properties(
             width=250,
-            height=250,
+            height=300,
             title={
                 "text": f"{season} Player Class Distribution",
                 "fontSize": title_font_size,
@@ -271,25 +287,17 @@ def _(
 
     if running_locally:
         # Save the chart as an image.
-        _player_classes_chart.save(
+        player_classes_chart.save(
             season_path / f"{season}_player_classes_{university}.png", scale_factor=2.0
         )
     else:
         print("Skipped saving chart as an image since app is running as a WASM app.")
-
-    mo.vstack([mo.ui.altair_chart(_player_classes_chart)], align="center")
-    return
+    return (player_classes_chart,)
 
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(
-        r"""
-        ### Dev Traits
-        - There are four dev traits: **normal**, **impact**, **star**, and **elite**
-        > Note: the UI element below is a carousel with three charts for each tab. Click on the left or right arrows on the sides of the carousel or click on the three dots at the bottom to move through the images.
-        """
-    )
+    mo.md(r""" """)
     return
 
 
@@ -808,13 +816,16 @@ def _(mo, running_locally):
 
 
 @app.cell
-def _(carousel_per_group, carousel_per_position, mo):
+def _(carousel_per_group, carousel_per_position, mo, player_classes_chart):
     mo.ui.tabs(
         {
-            "By Position": mo.carousel(
+            "Class Distribution": mo.carousel(
+                [mo.hstack([player_classes_chart], justify="center")]
+            ),
+            "Dev Traits per Position": mo.carousel(
                 [mo.hstack([chart], justify="center") for chart in carousel_per_position]
             ),
-            "By Group": mo.carousel(
+            "Dev Traits per Group": mo.carousel(
                 [mo.hstack([chart], justify="center") for chart in carousel_per_group]
             ),
         }
@@ -835,13 +846,13 @@ def _(mo, overall_slider):
         ### Potential Non-Senior Drafted Players
         Each season, in addition to the seniors leaving the roster via graduation, there is the potential to lose strongly performing underclassman to the NFL draft. In this analysis, the stand in for performance will be the player's overall rating, specifically the `overall_start` rating which is collected in the preseason. The player's class also matters as the player needs to be in their third year of eligibility in order to declare for the draft.
 
-        Overall ratings in the high 80's are where players start to declare for the draft if eligible. Since the ratings used in the table are from the preseason and player development during the season (an increase in their overall) is common, a slider is provided to adjust the cutoff. The bullet points below summarize the filters that are applied to get the dataframe of potential non-senior drafted players.
+        In CFB 25, overall ratings in the high 80s are where players start to declare for the draft if eligible. Since the ratings used in the dataframe are from the preseason, and player development during the season (an increase in their overall) is common, a slider is provided to adjust the minimum rating cutoff. The bullet points below summarize the filters that are applied to get the dataframe of potential non-senior drafted players.
 
         - non-senior
-        - draft eligible - a true junior, redshirt junior, or a redshirt sophomore
+        - draft eligible - true junior, redshirt junior, or redshirt sophomore
         - {overall_slider} **{overall_slider.value} `overall_start` or higher**
 
-            > Note: the dataframe is sorted first by `group`, then `position`, then `overall_start`.
+        > Note: the dataframe is sorted first by `group`, then `position`, then `overall_start`.
         """
     )
     return
@@ -866,8 +877,11 @@ def _(mo):
     mo.md(
         r"""
         ### Young Player Quality
-        - young player: a freshman or sophomore including redshirted players
-        - the average overall of young players at each position group is used to assess young player quality
+        To help with recruiting, it is useful to have an idea of which areas of the team are currently weak. The focus here is on younger players since they are lower on the depth chart and assessing if certain positions or position groups need a boost of talent via recruiting. The list below details the approach for this analysis.
+
+        - A young player will be defined as a freshman or sophomore including redshirted players.
+        - The average overall (`overall_start`) of all young players in a given position group is used to assess young player quality at that position group. Position groups are used because this mirrors how recruits are categorized in CFB 25 in the recruiting screen.
+
         > Note: the dataframe is sorted by `avg_overall_start` from weakest to strongest positions.
         """
     )
@@ -895,16 +909,21 @@ def _(mo):
     mo.md(
         r"""
         ### Players to Cut
-        - click the checkbox of any players you plan on cutting. Use the **Download** button in the bottom right to save the list for reference later when doing the actual cuts.
+        College football teams need to have 85 players rostered at the start of the preseason. Because the number of players leaving at the end of each season is normally less than the number of incoming recruits, cuts have to be made. The `marimo` table below contains the roster with the seniors removed since they will already be leaving due to graduation (unless of course they are redshirted as a senior which is rare in CFB 25).
+
+        > Note: to create the selection of cuts, click the checkbox of any players you plan on cutting. Then use the **Download** button in the bottom right to save the selection as a CSV or JSON file for reference later when doing the actual cuts.
         """
     )
     return
 
 
 @app.cell
-def _(mo, roster):
-    mo.ui.table(roster.drop(["secondary_group", "team", "overall_end"]))
-    return
+def _(mo, pl, roster):
+    potential_cut_roster = roster.filter(pl.col("class") != "SR").drop(
+        ["secondary_group", "team", "overall_end"]
+    )
+    mo.ui.table(potential_cut_roster)
+    return (potential_cut_roster,)
 
 
 @app.cell(hide_code=True)
