@@ -891,6 +891,23 @@ def _(mo, pl, roster):
 
 
 @app.cell(hide_code=True)
+def _(mo):
+    mo.md(
+        r"""
+        ### Players to Cut
+        - click the checkbox of any players you plan on cutting. Use the **Download** button in the bottom right to save the list for reference later when doing the actual cuts.
+        """
+    )
+    return
+
+
+@app.cell
+def _(mo, roster):
+    mo.ui.table(roster.drop(["secondary_group", "team", "overall_end"]))
+    return
+
+
+@app.cell(hide_code=True)
 def _(mo, running_locally):
     mo.md(r"""## Appendix""") if running_locally else None
     return
