@@ -1,6 +1,6 @@
 import marimo
 
-__generated_with = "0.11.14"
+__generated_with = "0.11.17"
 app = marimo.App(
     width="medium",
     css_file="",
@@ -212,12 +212,6 @@ def _(pl, roster):
 
 
 @app.cell(hide_code=True)
-def _(mo):
-    mo.md(r""" """)
-    return
-
-
-@app.cell(hide_code=True)
 def _(mo, running_locally):
     mo.md(r"""#### Player Class Distribution""") if running_locally else None
     return
@@ -235,54 +229,21 @@ def _(roster_with_order):
 
 @app.cell
 def _(
-    alt,
-    anchor,
-    color_1,
-    color_2,
+    build_player_classes_chart,
+    chart_shared_properties,
     player_classes,
     running_locally,
     season,
     season_path,
-    title_font_size,
     university,
 ):
     # Player class distribution chart.
-    player_classes_chart = (
-        alt.Chart(player_classes)
-        .mark_bar()
-        .encode(
-            x=alt.X(
-                "class:N",
-                title="Player Class",
-                axis=alt.Axis(labelAngle=0),
-                sort={"field": "class_order"},
-            ),
-            y=alt.Y("count:Q", title="Players"),
-            color=alt.Color(
-                "red_shirt:N",
-                title="Red Shirt Status",
-                scale=alt.Scale(
-                    domain=[True, False],
-                    range=[color_1, color_2],
-                ),
-                sort={"field": "red_shirt_order"},
-            ),
-            order="red_shirt:O",
-            tooltip=[
-                alt.Tooltip("class:N", title="Player Class"),
-                alt.Tooltip("count:Q", title="Players"),
-                alt.Tooltip("red_shirt:N", title="Red Shirt Status"),
-            ],
-        )
-        .properties(
-            width=250,
-            height=300,
-            title={
-                "text": f"{season} Player Class Distribution",
-                "fontSize": title_font_size,
-                "anchor": anchor,
-            },
-        )
+    player_classes_chart = build_player_classes_chart(
+        chart_df=player_classes,
+        column_name="class",
+        height=300,
+        shared_properties=chart_shared_properties,
+        width=250,
     )
 
     if running_locally:
@@ -293,12 +254,6 @@ def _(
     else:
         print("Skipped saving chart as an image since app is running as a WASM app.")
     return (player_classes_chart,)
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r""" """)
-    return
 
 
 @app.cell(hide_code=True)
@@ -383,11 +338,10 @@ def _(
 @app.cell
 def _(
     alt,
-    anchor,
-    color_1,
-    color_2,
-    color_3,
-    color_4,
+    build_dev_trait_chart,
+    build_dev_trait_pipeline_chart,
+    build_star_elite_chart,
+    chart_shared_properties,
     dev_per_position,
     dev_per_position_pipeline,
     height_pipeline,
@@ -396,11 +350,10 @@ def _(
     season,
     season_path,
     star_elite_per_position,
-    title_font_size,
     university,
     width_position,
 ):
-    # Define shared plot properties.
+    # Define shared `position` chart properties.
     _x_axis = alt.X(
         "position:N",
         title="Position",
@@ -411,127 +364,40 @@ def _(
     _legend_title = "Dev Trait"
 
     # Dev traits per position chart --------------------------------------------------------
-    _dev_trait_chart = (
-        alt.Chart(dev_per_position)
-        .mark_bar()
-        .encode(
-            x=_x_axis,
-            y=alt.Y(
-                "count:Q",
-                title=_y_axis_title,
-                axis=alt.Axis(format="d"),
-            ),
-            color=alt.Color(
-                "dev_trait:N",
-                title=_legend_title,
-                scale=alt.Scale(
-                    domain=["elite", "star", "impact", "normal"],
-                    range=[color_1, color_2, color_3, color_4],
-                ),
-                sort={"field": "dev_trait_order"},
-            ),
-            order="dev_trait_order:O",
-            tooltip=[
-                alt.Tooltip("position:N", title="Position"),
-                alt.Tooltip("count:Q", title="Players"),
-                alt.Tooltip("dev_trait:N", title="Dev Trait"),
-            ],
-        )
-        .properties(
-            width=width_position,
-            height=300,
-            title={
-                "text": f"{season} Player Dev Traits per Position",
-                "fontSize": title_font_size,
-                "anchor": anchor,
-            },
-        )
+    _dev_trait_chart = build_dev_trait_chart(
+        chart_df=dev_per_position,
+        column_name="position",
+        height=300,
+        legend_title=_legend_title,
+        shared_properties=chart_shared_properties,
+        width=width_position,
+        x_axis=_x_axis,
+        y_axis_title=_y_axis_title,
     )
 
-    # Star and elite players per position chart --------------------------------------------
-    _star_elite_chart = (
-        alt.Chart(star_elite_per_position)
-        .mark_bar()
-        .encode(
-            x=_x_axis,
-            y=alt.Y(
-                "count:Q",
-                title=_y_axis_title,
-                axis=alt.Axis(format="d"),
-            ),
-            color=alt.Color(
-                "dev_trait:N",
-                title=_legend_title,
-                scale=alt.Scale(
-                    domain=["elite", "star"],
-                    range=[color_1, color_2],
-                ),
-                sort={"field": "dev_trait_order"},
-            ),
-            order="dev_trait_order:O",
-            tooltip=[
-                alt.Tooltip("position:N", title="Position"),
-                alt.Tooltip("count:Q", title="Players"),
-                alt.Tooltip("dev_trait:N", title="Dev Trait"),
-            ],
-        )
-        .properties(
-            width=width_position,
-            height=200,
-            title={
-                "text": f"{season} Star / Elite Players per Position",
-                "fontSize": title_font_size,
-                "anchor": anchor,
-            },
-        )
+    # Star / elite players per position chart ----------------------------------------------
+    _star_elite_chart = build_star_elite_chart(
+        chart_df=star_elite_per_position,
+        column_name="position",
+        height=200,
+        legend_title=_legend_title,
+        shared_properties=chart_shared_properties,
+        width=width_position,
+        x_axis=_x_axis,
+        y_axis_title=_y_axis_title,
     )
 
     # Dev traits per position pipeline chart -----------------------------------------------
-    # Build the pipeline chart in stages due to issues with ordering. Apply ordering in both
-    # the encode and facet steps to ensure the correct ordering is kept in the final chart.
-    _dev_trait_pipeline_base = alt.Chart(dev_per_position_pipeline).mark_bar()
-
-    # Apply the encoding with the correct ordering.
-    _dev_trait_pipeline_encode = _dev_trait_pipeline_base.encode(
-        x=_x_axis,
-        y=alt.Y("count:Q", title="Players"),
-        color=alt.Color(
-            "dev_trait:N",
-            title="Dev Trait",
-            scale=alt.Scale(
-                domain=["elite", "star", "impact", "normal"],
-                range=[color_1, color_2, color_3, color_4],
-            ),
-            sort={"field": "dev_trait_order"},
-        ),
-        order="dev_trait_order:O",
-        tooltip=[
-            alt.Tooltip("position:N", title="Position"),
-            alt.Tooltip("count:Q", title="Players"),
-            alt.Tooltip("dev_trait:N", title="Dev Trait"),
-            alt.Tooltip("class:N", title="Class"),
-        ],
-    ).properties(width=width_position, height=height_pipeline)
-
-    # Apply the faceting with the correct ordering.
-    _dev_trait_pipeline_chart = (
-        _dev_trait_pipeline_encode.facet(
-            row=alt.Row(
-                "class:N",
-                sort={"field": "class_order"},
-                title="Class",
-            ),
-        )
-        .properties(
-            title={
-                "text": f"{season} Player Dev Trait Pipeline per Position",
-                "fontSize": title_font_size,
-                "anchor": anchor,
-            },
-        )
-        .configure_view(stroke=None)
+    _dev_trait_pipeline_chart = build_dev_trait_pipeline_chart(
+        chart_df=dev_per_position_pipeline,
+        column_name="position",
+        height=height_pipeline,
+        shared_properties=chart_shared_properties,
+        width=width_position,
+        x_axis=_x_axis,
     )
 
+    # If running locally, save the images to disk.
     if running_locally:
         # Save the charts as images.
         _dev_trait_chart.save(
@@ -635,11 +501,10 @@ def _(
 @app.cell
 def _(
     alt,
-    anchor,
-    color_1,
-    color_2,
-    color_3,
-    color_4,
+    build_dev_trait_chart,
+    build_dev_trait_pipeline_chart,
+    build_star_elite_chart,
+    chart_shared_properties,
     dev_per_group,
     dev_per_group_pipeline,
     height_pipeline,
@@ -648,11 +513,10 @@ def _(
     season,
     season_path,
     star_elite_per_group,
-    title_font_size,
     university,
     width_group,
 ):
-    # Define shared plot properties.
+    # Define shared `group` chart properties.
     _x_axis = alt.X(
         "group:N",
         title="Group",
@@ -663,127 +527,40 @@ def _(
     _legend_title = "Dev Trait"
 
     # Dev traits per group chart -----------------------------------------------------------
-    _dev_trait_chart = (
-        alt.Chart(dev_per_group)
-        .mark_bar()
-        .encode(
-            x=_x_axis,
-            y=alt.Y(
-                "count:Q",
-                title=_y_axis_title,
-                axis=alt.Axis(format="d"),
-            ),
-            color=alt.Color(
-                "dev_trait:N",
-                title=_legend_title,
-                scale=alt.Scale(
-                    domain=["elite", "star", "impact", "normal"],
-                    range=[color_1, color_2, color_3, color_4],
-                ),
-                sort={"field": "dev_trait_order"},
-            ),
-            order="dev_trait_order:O",
-            tooltip=[
-                alt.Tooltip("group:N", title="Group"),
-                alt.Tooltip("count:Q", title="Players"),
-                alt.Tooltip("dev_trait:N", title="Dev Trait"),
-            ],
-        )
-        .properties(
-            width=width_group,
-            height=330,
-            title={
-                "text": f"{season} Player Dev Traits per Group",
-                "fontSize": title_font_size,
-                "anchor": anchor,
-            },
-        )
+    _dev_trait_chart = build_dev_trait_chart(
+        chart_df=dev_per_group,
+        column_name="group",
+        height=330,
+        legend_title=_legend_title,
+        shared_properties=chart_shared_properties,
+        width=width_group,
+        x_axis=_x_axis,
+        y_axis_title=_y_axis_title,
     )
 
-    # Star and elite players per group chart -----------------------------------------------
-    _star_elite_chart = (
-        alt.Chart(star_elite_per_group)
-        .mark_bar()
-        .encode(
-            x=_x_axis,
-            y=alt.Y(
-                "count:Q",
-                title=_y_axis_title,
-                axis=alt.Axis(format="d"),
-            ),
-            color=alt.Color(
-                "dev_trait:N",
-                title=_legend_title,
-                scale=alt.Scale(
-                    domain=["elite", "star"],
-                    range=[color_1, color_2],
-                ),
-                sort={"field": "dev_trait_order"},
-            ),
-            order="dev_trait_order:O",
-            tooltip=[
-                alt.Tooltip("group:N", title="Group"),
-                alt.Tooltip("count:Q", title="Players"),
-                alt.Tooltip("dev_trait:N", title="Dev Trait"),
-            ],
-        )
-        .properties(
-            width=width_group,
-            height=260,
-            title={
-                "text": f"{season} Star / Elite Players per Group",
-                "fontSize": title_font_size,
-                "anchor": anchor,
-            },
-        )
+    # Star / elite players per group chart -------------------------------------------------
+    _star_elite_chart = build_star_elite_chart(
+        chart_df=star_elite_per_group,
+        column_name="group",
+        height=260,
+        legend_title=_legend_title,
+        shared_properties=chart_shared_properties,
+        width=width_group,
+        x_axis=_x_axis,
+        y_axis_title=_y_axis_title,
     )
 
     # Dev traits per group pipeline chart --------------------------------------------------
-    # Build the pipeline chart in stages due to issues with ordering. Apply ordering in both
-    # the encode and facet steps to ensure the correct ordering is kept in the final chart.
-    _dev_trait_pipeline_base = alt.Chart(dev_per_group_pipeline).mark_bar()
-
-    # Apply the encoding with the correct ordering.
-    _dev_trait_pipeline_encode = _dev_trait_pipeline_base.encode(
-        x=_x_axis,
-        y=alt.Y("count:Q", title="Players"),
-        color=alt.Color(
-            "dev_trait:N",
-            title="Dev Trait",
-            scale=alt.Scale(
-                domain=["elite", "star", "impact", "normal"],
-                range=[color_1, color_2, color_3, color_4],
-            ),
-            sort={"field": "dev_trait_order"},
-        ),
-        order="dev_trait_order:O",
-        tooltip=[
-            alt.Tooltip("group:N", title="Group"),
-            alt.Tooltip("count:Q", title="Players"),
-            alt.Tooltip("dev_trait:N", title="Dev Trait"),
-            alt.Tooltip("class:N", title="Class"),
-        ],
-    ).properties(width=width_group, height=height_pipeline)
-
-    # Apply the faceting with the correct ordering.
-    _dev_trait_pipeline_chart = (
-        _dev_trait_pipeline_encode.facet(
-            row=alt.Row(
-                "class:N",
-                sort={"field": "class_order"},
-                title="Class",
-            ),
-            # spacing=40,
-        ).properties(
-            title={
-                "text": f"{season} Player Dev Trait Pipeline per Group",
-                "fontSize": title_font_size,
-                "anchor": anchor,
-            },
-        )
-        # .configure_view(stroke=None)
+    _dev_trait_pipeline_chart = build_dev_trait_pipeline_chart(
+        chart_df=dev_per_group_pipeline,
+        column_name="group",
+        height=height_pipeline,
+        shared_properties=chart_shared_properties,
+        width=width_group,
+        x_axis=_x_axis,
     )
 
+    # If running locally, save the images to disk.
     if running_locally:
         # Save the charts as images.
         _dev_trait_chart.save(
@@ -939,6 +716,12 @@ def _():
 
 
 @app.cell(hide_code=True)
+def _(mo, running_locally):
+    mo.md(r"""### Environment Check""") if running_locally else None
+    return
+
+
+@app.cell(hide_code=True)
 def _(mo):
     # Check if the notebook is running locally.
     running_locally = mo.notebook_dir() == mo.notebook_location()
@@ -952,9 +735,16 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
+def _(mo, running_locally):
+    mo.md(r"""### Main Imports""") if running_locally else None
+    return
+
+
+@app.cell(hide_code=True)
 async def _(micropip, running_locally):
     from io import BytesIO
     from pathlib import Path
+    from typing import Any, TypedDict
 
     import altair as alt
     import httpx
@@ -966,23 +756,24 @@ async def _(micropip, running_locally):
 
     # Set polars to show all rows of a dataframe. Assignment is used to suppress output.
     _ = pl.Config(tbl_rows=-1)
-    return BytesIO, Path, alt, httpx, pl
+    return Any, BytesIO, Path, TypedDict, alt, httpx, pl
 
 
 @app.cell(hide_code=True)
 def _(mo, running_locally):
-    mo.md(r"""### Plot Constants""") if running_locally else None
+    mo.md(r"""### Shared Chart Properties""") if running_locally else None
     return
 
 
 @app.cell(hide_code=True)
-def _(mo, university, university_season_form):
+def _(TypedDict, mo, season, university, university_season_form):
     # Stop execution if the form has not been submitted.
     mo.stop(
         university_season_form.value is None,
         mo.md("**Submit the form above to continue.**"),
     )
 
+    # General chart shared properties ------------------------------------------------------
     # University color schemes.
     _university_colors = {
         "fresno_state": {
@@ -1011,20 +802,51 @@ def _(mo, university, university_season_form):
     color_3 = _university_colors[university]["color_3"]
     color_4 = _university_colors[university]["color_4"]
 
-    # Plot constants.
+    # Additional shared properties.
     width_position = 650
     width_group = 500
-    height_pipeline = 90
     title_font_size = 14
     anchor = "middle"
-    gap = 3
+
+
+    # Construct the type annotation for `chart_shared_properties`.
+    class LegendColors(TypedDict):
+        color_1: str
+        color_2: str
+        color_3: str
+        color_4: str
+
+
+    class ChartSharedProperties(TypedDict):
+        season: str
+        legend_colors: LegendColors
+        fontSize: int
+        anchor: str
+
+
+    chart_shared_properties: ChartSharedProperties = {
+        "season": season,
+        "legend_colors": {
+            "color_1": color_1,
+            "color_2": color_2,
+            "color_3": color_3,
+            "color_4": color_4,
+        },
+        "title_font_size": title_font_size,
+        "anchor": anchor,
+    }
+
+    # Specific chart shared properties -----------------------------------------------------
+    height_pipeline = 90
     return (
+        ChartSharedProperties,
+        LegendColors,
         anchor,
+        chart_shared_properties,
         color_1,
         color_2,
         color_3,
         color_4,
-        gap,
         height_pipeline,
         title_font_size,
         width_group,
@@ -1034,11 +856,97 @@ def _(mo, university, university_season_form):
 
 @app.cell(hide_code=True)
 def _(mo, running_locally):
-    mo.md(r"""### Roster Loading Functions""") if running_locally else None
+    mo.md(r"""### Schema""") if running_locally else None
     return
 
 
 @app.cell(hide_code=True)
+def _(pl):
+    # Enums for the `class`, `team`, and `dev_trait` columns.
+    class_enum = pl.Enum(["FR", "SO", "JR", "SR"])
+    # `team_enum` refers to either offense, defense, or special teams.
+    team_enum = pl.Enum(["OFF", "DEF", "ST"])
+    dev_trait_enum = pl.Enum(["normal", "impact", "star", "elite"])
+
+    # Set up the schema overrides for the columns that need it. The `overall_start` and
+    # `overall_end` columns need an override because `polars` does not infer the column as
+    # an integer for roster years that have this data missing.
+    schema_overrides = {
+        "class": class_enum,
+        "position": pl.Categorical(),
+        "group": pl.Categorical(),
+        "secondary_group": pl.Categorical(),
+        "team": team_enum,
+        "archetype": pl.Categorical(),
+        "dev_trait": dev_trait_enum,
+        "overall_start": pl.UInt8,
+        "overall_end": pl.UInt8,
+    }
+    return class_enum, dev_trait_enum, schema_overrides, team_enum
+
+
+@app.cell(hide_code=True)
+def _(mo, running_locally):
+    mo.md(
+        r"""
+        ### Utility Functions
+        #### `find_project_path`
+        """
+    ) if running_locally else None
+    return
+
+
+@app.cell
+def _(Path):
+    def find_project_path(project_name: str) -> Path:
+        """Find the project path based on the presence of a .git or pyproject.toml file.
+
+        Parameters
+        ----------
+        project_name : str
+            Name of the project directory.
+
+        Returns
+        -------
+        Path
+            Project path.
+
+        Raises
+        ------
+        FileNotFoundError
+            If a project directory with the mark files is not found.
+        """
+        marker_files = [".git", "pyproject.toml"]
+        current_path = Path().cwd()
+
+        # Check current directory.
+        if current_path.name == project_name and any(
+            (current_path / marker).exists() for marker in marker_files
+        ):
+            return current_path
+
+        # Check parent directories.
+        for parent in current_path.parents:
+            if parent.name == project_name and any(
+                (parent / marker).exists() for marker in marker_files
+            ):
+                return parent
+
+        raise FileNotFoundError(
+            "Could not find a project directory containing either a .git or pyproject.toml file."
+        )
+    return (find_project_path,)
+
+
+@app.cell(hide_code=True)
+def _(mo, running_locally):
+    mo.md(
+        r"""#### `load_roster_locally` and `load_roster_from_github_repo`"""
+    ) if running_locally else None
+    return
+
+
+@app.cell
 def _(BytesIO, Path, httpx, mo, pl):
     PolarsDataType = pl.DataType | type[pl.DataType]
 
@@ -1156,81 +1064,343 @@ def _(BytesIO, Path, httpx, mo, pl):
 
 @app.cell(hide_code=True)
 def _(mo, running_locally):
-    mo.md(r"""### Schema""") if running_locally else None
+    mo.md(r"""#### `build_player_classes_chart`""") if running_locally else None
     return
 
 
-@app.cell(hide_code=True)
-def _(pl):
-    # Enums for the `class`, `team`, and `dev_trait` columns.
-    class_enum = pl.Enum(["FR", "SO", "JR", "SR"])
-    # `team_enum` refers to either offense, defense, or special teams.
-    team_enum = pl.Enum(["OFF", "DEF", "ST"])
-    dev_trait_enum = pl.Enum(["normal", "impact", "star", "elite"])
+@app.cell
+def _(ChartSharedProperties, alt, color_1, color_2, pl):
+    def build_player_classes_chart(
+        chart_df: pl.DataFrame,
+        column_name: str,
+        height: int,
+        shared_properties: ChartSharedProperties,
+        width: int,
+    ) -> alt.Chart:
+        """Build the player class distribution chart.
 
-    # Set up the schema overrides for the columns that need it. The `overall_start` and
-    # `overall_end` columns need an override because `polars` does not infer the column as
-    # an integer for roster years that have this data missing.
-    schema_overrides = {
-        "class": class_enum,
-        "position": pl.Categorical(),
-        "group": pl.Categorical(),
-        "secondary_group": pl.Categorical(),
-        "team": team_enum,
-        "archetype": pl.Categorical(),
-        "dev_trait": dev_trait_enum,
-        "overall_start": pl.UInt8,
-        "overall_end": pl.UInt8,
-    }
-    return class_enum, dev_trait_enum, schema_overrides, team_enum
+        Parameters
+        ----------
+        chart_df : pl.DataFrame
+            Source dataframe.
+        column_name : str
+            Name of the column that forms the x-axis of the chart.
+        height: int
+            Height of chart.
+        shared_properties : ChartSharedProperties
+            Properties shared across all charts.
+        width : int
+            Required width for `x_axis` display.
+
+        Returns
+        -------
+        alt.Chart
+            Player class distribution chart.
+        """
+        return (
+            alt.Chart(chart_df)
+            .mark_bar()
+            .encode(
+                x=alt.X(
+                    f"{column_name}:N",
+                    axis=alt.Axis(labelAngle=0),
+                    sort={"field": "class_order"},
+                    title=f"{column_name.title()}",
+                ),
+                y=alt.Y("count:Q", title="Players"),
+                color=alt.Color(
+                    "red_shirt:N",
+                    scale=alt.Scale(
+                        domain=[True, False],
+                        range=[color_1, color_2],
+                    ),
+                    sort={"field": "red_shirt_order"},
+                    title="Red Shirt Status",
+                ),
+                order="red_shirt:O",
+                tooltip=[
+                    alt.Tooltip(f"{column_name}:N", title=f"{column_name.title()}"),
+                    alt.Tooltip("count:Q", title="Players"),
+                    alt.Tooltip("red_shirt:N", title="Red Shirt Status"),
+                ],
+            )
+            .properties(
+                height=height,
+                title={
+                    "anchor": shared_properties["anchor"],
+                    "fontSize": shared_properties["title_font_size"],
+                    "text": f"{shared_properties['season']} Player Class Distribution",
+                },
+                width=width,
+            )
+        )
+    return (build_player_classes_chart,)
 
 
 @app.cell(hide_code=True)
 def _(mo, running_locally):
-    mo.md(r"""### Find Project Path Function""") if running_locally else None
+    mo.md(r"""#### `build_dev_trait_chart`""") if running_locally else None
     return
 
 
-@app.cell(hide_code=True)
-def _(Path):
-    def find_project_path(project_name: str) -> Path:
-        """Find the project path based on the presence of a .git or pyproject.toml file.
+@app.cell
+def _(ChartSharedProperties, alt, pl):
+    def build_dev_trait_chart(
+        chart_df: pl.DataFrame,
+        column_name: str,
+        height: int,
+        legend_title: str,
+        shared_properties: ChartSharedProperties,
+        width: int,
+        x_axis: alt.X,
+        y_axis_title: str,
+    ) -> alt.Chart:
+        """Build the dev trait per `column_name` chart.
 
         Parameters
         ----------
-        project_name : str
-            Name of the project directory.
+        chart_df : pl.DataFrame
+            Source dataframe.
+        column_name : str
+            Name of the column that forms the x-axis of the chart.
+        height: int
+            Height of chart.
+        legend_title: str
+            Legend title.
+        shared_properties : ChartSharedProperties
+            Properties shared across all charts.
+        width : int
+            Required width for `x_axis` display.
+        x_axis : alt.X
+            Shared x-axis for all `column_name` charts.
+        y_axis_title : str
+            Y-axis title.
 
         Returns
         -------
-        Path
-            Project path.
-
-        Raises
-        ------
-        FileNotFoundError
-            If a project directory with the mark files is not found.
+        alt.Chart
+            Dev trait per `column_name` chart.
         """
-        marker_files = [".git", "pyproject.toml"]
-        current_path = Path().cwd()
-
-        # Check current directory.
-        if current_path.name == project_name and any(
-            (current_path / marker).exists() for marker in marker_files
-        ):
-            return current_path
-
-        # Check parent directories.
-        for parent in current_path.parents:
-            if parent.name == project_name and any(
-                (parent / marker).exists() for marker in marker_files
-            ):
-                return parent
-
-        raise FileNotFoundError(
-            "Could not find a project directory containing either a .git or pyproject.toml file."
+        return (
+            alt.Chart(chart_df)
+            .mark_bar()
+            .encode(
+                x=x_axis,
+                y=alt.Y(
+                    "count:Q",
+                    axis=alt.Axis(format="d"),
+                    title=y_axis_title,
+                ),
+                color=alt.Color(
+                    "dev_trait:N",
+                    scale=alt.Scale(
+                        domain=["elite", "star", "impact", "normal"],
+                        range=[
+                            shared_properties["legend_colors"]["color_1"],
+                            shared_properties["legend_colors"]["color_2"],
+                            shared_properties["legend_colors"]["color_3"],
+                            shared_properties["legend_colors"]["color_4"],
+                        ],
+                    ),
+                    sort={"field": "dev_trait_order"},
+                    title=legend_title,
+                ),
+                order="dev_trait_order:O",
+                tooltip=[
+                    alt.Tooltip(f"{column_name}:N", title=f"{column_name.title()}"),
+                    alt.Tooltip("count:Q", title="Players"),
+                    alt.Tooltip("dev_trait:N", title="Dev Trait"),
+                ],
+            )
+            .properties(
+                height=height,
+                title={
+                    "anchor": shared_properties["anchor"],
+                    "fontSize": shared_properties["title_font_size"],
+                    "text": f"{shared_properties['season']} Player Dev Traits per {column_name.title()}",
+                },
+                width=width,
+            )
         )
-    return (find_project_path,)
+    return (build_dev_trait_chart,)
+
+
+@app.cell(hide_code=True)
+def _(mo, running_locally):
+    mo.md(r"""#### `build_star_elite_chart`""") if running_locally else None
+    return
+
+
+@app.cell
+def _(ChartSharedProperties, alt, pl):
+    def build_star_elite_chart(
+        chart_df: pl.DataFrame,
+        column_name: str,
+        height: int,
+        legend_title: str,
+        shared_properties: ChartSharedProperties,
+        width: int,
+        x_axis: alt.X,
+        y_axis_title: str,
+    ) -> alt.Chart:
+        """Build the star / elite dev trait per `column_name` chart.
+
+        Parameters
+        ----------
+        chart_df : pl.DataFrame
+            Source dataframe.
+        column_name : str
+            Name of the column that forms the x-axis of the chart.
+        height: int
+            Height of chart.
+        legend_title: str
+            Legend title.
+        shared_properties : ChartSharedProperties
+            Properties shared across all charts.
+        width : int
+            Required width for `x_axis` display.
+        x_axis : alt.X
+            Shared x-axis for all `column_name` charts.
+        y_axis_title : str
+            Y-axis title.
+
+        Returns
+        -------
+        alt.Chart
+            Star / elite dev trait per `column_name` chart.
+        """
+        return (
+            alt.Chart(chart_df)
+            .mark_bar()
+            .encode(
+                x=x_axis,
+                y=alt.Y(
+                    "count:Q",
+                    axis=alt.Axis(format="d"),
+                    title=y_axis_title,
+                ),
+                color=alt.Color(
+                    "dev_trait:N",
+                    scale=alt.Scale(
+                        domain=["elite", "star"],
+                        range=[
+                            shared_properties["legend_colors"]["color_1"],
+                            shared_properties["legend_colors"]["color_2"],
+                        ],
+                    ),
+                    sort={"field": "dev_trait_order"},
+                    title=legend_title,
+                ),
+                order="dev_trait_order:O",
+                tooltip=[
+                    alt.Tooltip(f"{column_name}:N", title=f"{column_name.title()}"),
+                    alt.Tooltip("count:Q", title="Players"),
+                    alt.Tooltip("dev_trait:N", title="Dev Trait"),
+                ],
+            )
+            .properties(
+                height=height,
+                title={
+                    "anchor": shared_properties["anchor"],
+                    "fontSize": shared_properties["title_font_size"],
+                    "text": f"{shared_properties['season']} Star / Elite Players per {column_name.title()}",
+                },
+                width=width,
+            )
+        )
+    return (build_star_elite_chart,)
+
+
+@app.cell(hide_code=True)
+def _(mo, running_locally):
+    mo.md(r"""#### `build_dev_trait_pipeline_chart`""") if running_locally else None
+    return
+
+
+@app.cell
+def _(ChartSharedProperties, alt, pl):
+    def build_dev_trait_pipeline_chart(
+        chart_df: pl.DataFrame,
+        column_name: str,
+        height: int,
+        shared_properties: ChartSharedProperties,
+        width: int,
+        x_axis: alt.X,
+    ) -> alt.FacetChart:
+        """Build the faceted dev trait per `column_name` pipeline chart.
+
+        Parameters
+        ----------
+        chart_df : pl.DataFrame
+            Source dataframe.
+        column_name : str
+            Name of the column that forms the x-axis of the chart.
+        height: int
+            Height of each facet chart.
+        shared_properties : ChartSharedProperties
+            Properties shared across all charts.
+        width : int
+            Required width for `x_axis` display.
+        x_axis : alt.X
+            Shared x-axis for all `column_name` charts.
+
+        Returns
+        -------
+        alt.FacetChart
+            Faceted dev trait per `column_name` pipeline chart.
+        """
+        # Build the pipeline chart in stages due to issues with ordering. Apply ordering in
+        # both the encode and facet steps to ensure the correct ordering is kept in the
+        # final chart.
+        base_chart = alt.Chart(chart_df).mark_bar()
+
+        # Apply the encoding with the correct ordering.
+        chart = base_chart.encode(
+            x=x_axis,
+            y=alt.Y("count:Q", title="Players"),
+            color=alt.Color(
+                "dev_trait:N",
+                scale=alt.Scale(
+                    domain=["elite", "star", "impact", "normal"],
+                    range=[
+                        shared_properties["legend_colors"]["color_1"],
+                        shared_properties["legend_colors"]["color_2"],
+                        shared_properties["legend_colors"]["color_3"],
+                        shared_properties["legend_colors"]["color_4"],
+                    ],
+                ),
+                sort={"field": "dev_trait_order"},
+                title="Dev Trait",
+            ),
+            order="dev_trait_order:O",
+            tooltip=[
+                alt.Tooltip(f"{column_name}:N", title=f"{column_name.title()}"),
+                alt.Tooltip("count:Q", title="Players"),
+                alt.Tooltip("dev_trait:N", title="Dev Trait"),
+                alt.Tooltip("class:N", title="Class"),
+            ],
+        ).properties(height=height, width=width)
+
+        # Apply the faceting with the correct ordering.
+        return (
+            chart.facet(
+                row=alt.Row(
+                    "class:N",
+                    sort={"field": "class_order"},
+                    title="Class",
+                ),
+                spacing=23,
+            )
+            .properties(
+                title={
+                    "anchor": shared_properties["anchor"],
+                    "fontSize": shared_properties["title_font_size"],
+                    "text": f"{shared_properties['season']} Player Dev Trait Pipeline per {column_name.title()}",
+                },
+            )
+            .configure_view(stroke=None)
+        )
+    return (build_dev_trait_pipeline_chart,)
 
 
 if __name__ == "__main__":
