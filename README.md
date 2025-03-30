@@ -51,10 +51,12 @@ folder in the repo. There are also some images from the `roster_comparison.py`
 notebook located in the same folder.
 
 ## **Analysis**
-
+Analysis is performed on the selected university's roster for the selected
+season.
 
 ## **Future Plans**
-
+The current version of the project that exists in the deployed app focuses on
+analysis of one roster at a given time.
 
 
 <!-- <div align="center">
