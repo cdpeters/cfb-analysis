@@ -55,16 +55,80 @@ Analysis is performed on the selected university's roster for the selected
 season.
 
 ### **Roster Viewer**
-The roster viewer is a general tool that allows for creating many different views of the roster as needed. The idea is for the user to use this section for arbitrary queries that they're interested in that are not covered in the sections following this one.
+The roster viewer is a general tool that allows for creating many different
+views of the roster as needed. The idea is for the user to use this section for
+arbitrary queries that they're interested in that are not covered in the
+sections following this one.
+
+<div align="center">
+    <img src="data/images/README_images/roster_viewer_2030_fresno_state.svg"
+         alt="roster viewer 2030 fresno state" />
+</div>
+
+
+
 ### **Player Class Distribution**
+
+
+<div align="center">
+    <img src="data/images/fresno_state/2030/2030_player_classes_fresno_state.svg"
+         alt="fresno state player class distribution" />
+</div>
+
+
 
 ### **Development Traits per Position/Group**
 
+
+<div align="center">
+    <img src="data/images/fresno_state/2030/2030_dev_per_group_fresno_state.svg"
+         alt="development traits per group 2030 fresno state" />
+</div>
+
+
+
+<div align="center">
+    <img src="data/images/fresno_state/2030/2030_star_elite_per_group_fresno_state.svg"
+         alt="star and elite players per group 2030 fresno state" />
+</div>
+
+
+
+<div align="center">
+    <img src="data/images/fresno_state/2030/2030_dev_per_group_pipeline_fresno_state.svg"
+         alt="development trait pipeline per group 2030 fresno state" />
+</div>
+
+
+
 ### **Potential Non-Senior Drafted Players**
+
+
+<div align="center">
+    <img src="data/images/README_images/potential_non_senior_drafted_2030_fresno_state.svg"
+         alt="potential non-senior drafted players 2030 fresno state" />
+</div>
+
+
 
 ### **Young Player Quality**
 
+
+<div align="center">
+    <img src="data/images/README_images/young_player_quality_2030_fresno_state.svg"
+         alt="young player quality 2030 fresno state" />
+</div>
+
+
+
 ### **Players to Cut**
+
+
+<div align="center">
+    <img src="data/images/README_images/players_to_cut_2030_fresno_state.svg"
+         alt="players to cut 2030 fresno state" />
+</div>
+
 
 
 ## **Future Plans**
@@ -72,9 +136,3 @@ The current version of the project focuses on analysis of one roster at a given
 time. This is due to the goal of creating a roster construction aid. Future work
 will aim to add analyses that focus on comparing all three of the rosters
 simultaneously.
-
-
-<!-- <div align="center">
-    <img src="assets/images/bike_sharing/ride_durations_by_all_users.svg"
-         alt="Ride Durations by All Users" />
-</div> -->
