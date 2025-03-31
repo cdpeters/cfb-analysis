@@ -22,7 +22,7 @@ def _(mo):
         The **Roster Viewer** allows you to transform the view of the full roster. Transformations include filtering, grouping, aggregating, and sorting among other operations.
 
         ### Exploratory Analysis
-        This section contains charts as well as specific views of the roster (preapplied transformations).
+        This section contains charts as well as specific views of the roster (pre-applied transformations).
 
         #### Sections include:
         - **Player Class Distribution and Dev Trait per Position/Group**
