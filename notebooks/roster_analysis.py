@@ -249,7 +249,7 @@ def _(
     if running_locally:
         # Save the chart as an image.
         player_classes_chart.save(
-            season_path / f"{season}_player_classes_{university}.png", scale_factor=2.0
+            season_path / f"{season}_player_classes_{university}.svg", scale_factor=2.0
         )
     else:
         print("Skipped saving chart as an image since app is running as a WASM app.")
@@ -401,14 +401,14 @@ def _(
     if running_locally:
         # Save the charts as images.
         _dev_trait_chart.save(
-            season_path / f"{season}_dev_per_position_{university}.png", scale_factor=2.0
+            season_path / f"{season}_dev_per_position_{university}.svg", scale_factor=2.0
         )
         _star_elite_chart.save(
-            season_path / f"{season}_star_elite_per_position_{university}.png",
+            season_path / f"{season}_star_elite_per_position_{university}.svg",
             scale_factor=2.0,
         )
         _dev_trait_pipeline_chart.save(
-            season_path / f"{season}_dev_per_position_pipeline_{university}.png",
+            season_path / f"{season}_dev_per_position_pipeline_{university}.svg",
             scale_factor=2.0,
         )
     else:
@@ -564,14 +564,14 @@ def _(
     if running_locally:
         # Save the charts as images.
         _dev_trait_chart.save(
-            season_path / f"{season}_dev_per_group_{university}.png", scale_factor=2.0
+            season_path / f"{season}_dev_per_group_{university}.svg", scale_factor=2.0
         )
         _star_elite_chart.save(
-            season_path / f"{season}_star_elite_per_group_{university}.png",
+            season_path / f"{season}_star_elite_per_group_{university}.svg",
             scale_factor=2.0,
         )
         _dev_trait_pipeline_chart.save(
-            season_path / f"{season}_dev_per_group_pipeline_{university}.png",
+            season_path / f"{season}_dev_per_group_pipeline_{university}.svg",
             scale_factor=2.0,
         )
     else:
