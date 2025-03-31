@@ -54,9 +54,24 @@ notebook located in the same folder.
 Analysis is performed on the selected university's roster for the selected
 season.
 
+### **Roster Viewer**
+The roster viewer is a general tool that allows for creating many different views of the roster as needed. The idea is for the user to use this section for arbitrary queries that they're interested in that are not covered in the sections following this one.
+### **Player Class Distribution**
+
+### **Development Traits per Position/Group**
+
+### **Potential Non-Senior Drafted Players**
+
+### **Young Player Quality**
+
+### **Players to Cut**
+
+
 ## **Future Plans**
-The current version of the project that exists in the deployed app focuses on
-analysis of one roster at a given time.
+The current version of the project focuses on analysis of one roster at a given
+time. This is due to the goal of creating a roster construction aid. Future work
+will aim to add analyses that focus on comparing all three of the rosters
+simultaneously.
 
 
 <!-- <div align="center">
