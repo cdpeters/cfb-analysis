@@ -5,20 +5,22 @@ The following project analyzes three college football rosters from the dynasty
 mode of a video game called EA Sports College Football 25 (CFB 25). The goal of
 the project was to create a tool that would help make the recruiting portion of
 the game easier by collecting data from different screens within the mode and
-displaying it in a readily accessible and consistent format. The result of the
-project is an app that allows a user to view a given roster, transform the
-roster into alternate views, see visualizations related to roster construction,
-and use pre-transformed views to assess possible players leaving and young
-player quality.
+displaying it in a readily accessible and consistent format.
+
+The result of the project is an app that allows a user to view a given roster,
+transform the roster into alternate views, see visualizations related to roster
+construction, and use pre-transformed views to assess possible players leaving
+and young player quality.
 
 ### **Tools Used**
 The project uses the `marimo` notebook framework for all of the analysis,
 interactive UI elements, and for transformation of the notebook into a web app.
 The `polars` library was used for loading the data and performing dataframe
-transformations. `altair` was used for the visualizations. For the deployed app,
-`httpx` is used to fetch the roster files from the repo, replacing the file
-system read operations that are done when the notebook is run locally. The app
-is deployed on GitHub Pages: [CFB 25 Roster Analysis
+transformations. `altair` was used for the visualizations.
+
+For the deployed app, `httpx` is used to fetch the roster files from the repo,
+replacing the file system read operations that are done when the notebook is run
+locally. The app is deployed on GitHub Pages: [CFB 25 Roster Analysis
 App](https://cdpeters.github.io/cfb-analysis/).
 
 ### **Roster Data**
@@ -52,20 +54,33 @@ notebook located in the same folder.
 
 ## **Analysis**
 Analysis is performed on the selected university's roster for the selected
-season.
+season. The following sections detail the purpose and some of the implementation
+of each analysis within the app. The images below serve as examples of views
+within the app with `Fresno State` and `2030` selected as the university and
+season inputs respectively.
 
 ### **Roster Viewer**
 The roster viewer is a general tool that allows for creating many different
 views of the roster as needed. The idea is for the user to use this section for
 arbitrary queries that they're interested in that are not covered in the
-sections following this one.
+sections following this one. The viewer itself is a `marimo.ui.dataframe` UI
+element that comes with all the transformation capabilities built-in.
+
+The following image shows an example of the roster viewer UI element:
 
 <div align="center">
     <img src="data/images/README_images/roster_viewer_2030_fresno_state.svg"
          alt="roster viewer 2030 fresno state" />
 </div>
 
-
+Users can add/delete transformations at any time and even see the resulting
+python code that achieves those transformations. As mentioned in the overview,
+some of the transformations include:
+- filtering
+- selecting, renaming, converting, sorting, or exploding columns
+- grouping
+- aggregating
+- sampling rows
 
 ### **Player Class Distribution**
 
