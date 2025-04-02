@@ -646,7 +646,7 @@ def _(overall_slider, pl, roster):
 
     roster.filter(
         _draft_eligible_non_senior & (pl.col("overall_start") >= overall_slider.value)
-    ).drop(["secondary_group", "overall_end"]).sort(
+    ).drop(["secondary_group", "team", "overall_end"]).sort(
         ["group", "position", "overall_start"], descending=[False, False, True]
     )
     return
@@ -700,7 +700,7 @@ def _(mo):
 @app.cell
 def _(mo, pl, roster):
     potential_cut_roster = roster.filter(pl.col("class") != "SR").drop(
-        ["group", "secondary_group", "team", "overall_end"]
+        ["secondary_group", "team", "overall_end"]
     )
     mo.ui.table(potential_cut_roster)
     return (potential_cut_roster,)
@@ -712,7 +712,7 @@ def _(mo):
         {
             "Glossary": mo.md(
                 """
-                ### `class` 
+                ### `class`
 
                 | value | name      |
                 | ----- | --------- |
@@ -721,7 +721,7 @@ def _(mo):
                 | JR    | Junior    |
                 | SR    | Senior    |
 
-                ### `position` 
+                ### `position`
 
                 | value | name                     |
                 | ----- | ------------------------ |
@@ -747,7 +747,7 @@ def _(mo):
                 | K     | Kicker                   |
                 | P     | Punter                   |
 
-                ### `group` 
+                ### `group`
 
                 | value | name               | positions  |
                 | ----- | ------------------ | ---------- |
@@ -766,7 +766,7 @@ def _(mo):
                 | S     | Safety             | FS, SS     |
                 | K     | Kicker             | K, P       |
 
-                ### `secondary_group` 
+                ### `secondary_group`
 
                 | value | name               | groups     |
                 | ----- | ------------------ | ---------- |
@@ -778,7 +778,7 @@ def _(mo):
                 | DB    | Defensive Back     | CB, S      |
                 | K     | Kicker             | K          |
 
-                ### `team` 
+                ### `team`
 
                 | value | name          | secondary groups |
                 | ----- | ------------- | ---------------- |
