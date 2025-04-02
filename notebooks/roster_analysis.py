@@ -29,6 +29,9 @@ def _(mo):
         - **Potential Non-Senior Drafted Players**
         - **Young Player Quality**
         - **Players to Cut**
+
+        ### Glossary
+        There is a glossary at the bottom of the page. The glossary contains tables explaining the values found in some of the columns of the dataset.
         """
     )
     return
@@ -697,10 +700,107 @@ def _(mo):
 @app.cell
 def _(mo, pl, roster):
     potential_cut_roster = roster.filter(pl.col("class") != "SR").drop(
-        ["secondary_group", "team", "overall_end"]
+        ["group", "secondary_group", "team", "overall_end"]
     )
     mo.ui.table(potential_cut_roster)
     return (potential_cut_roster,)
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    accordion = mo.accordion(
+        {
+            "Glossary": mo.md(
+                """
+                ### `class` 
+
+                | value | name      |
+                | ----- | --------- |
+                | FR    | Freshman  |
+                | SO    | Sophomore |
+                | JR    | Junior    |
+                | SR    | Senior    |
+
+                ### `position` 
+
+                | value | name                     |
+                | ----- | ------------------------ |
+                | QB    | Quarterback              |
+                | HB    | Halfback                 |
+                | FB    | Fullback                 |
+                | WR    | Wide Receiver            |
+                | TE    | Tight End                |
+                | LT    | Left Tackle              |
+                | LG    | Left Guard               |
+                | C     | Center                   |
+                | RG    | Right Guard              |
+                | RT    | Right Tackle             |
+                | LE    | Left End                 |
+                | RE    | Right End                |
+                | DT    | Defensive Tackle         |
+                | LOLB  | Left Outside Linebacker  |
+                | MLB   | Middle Linebacker        |
+                | ROLB  | Right Outside Linebacker |
+                | CB    | Cornerback               |
+                | FS    | Free Safety              |
+                | SS    | Strong Safety            |
+                | K     | Kicker                   |
+                | P     | Punter                   |
+
+                ### `group` 
+
+                | value | name               | positions  |
+                | ----- | ------------------ | ---------- |
+                | QB    | Quarterback        | QB         |
+                | RB    | Running Back       | HB, FB     |
+                | WR    | Wide Receiver      | WR         |
+                | TE    | Tight End          | TE         |
+                | OT    | Offensive Tackle   | LT, RT     |
+                | LG    | Offensive Guard    | LG, RG     |
+                | C     | Center             | C          |
+                | DE    | Defensive End      | LE, RE     |
+                | DT    | Defensive Tackle   | DT         |
+                | OLB   | Outside Linebacker | LOLB, ROLB |
+                | MLB   | Middle Linebacker  | MLB        |
+                | CB    | Cornerback         | CB         |
+                | S     | Safety             | FS, SS     |
+                | K     | Kicker             | K, P       |
+
+                ### `secondary_group` 
+
+                | value | name               | groups     |
+                | ----- | ------------------ | ---------- |
+                | QB    | Quarterback        | QB         |
+                | SP    | Skill Position     | RB, WR, TE |
+                | OL    | Offensive Lineman  | OT, OG, C  |
+                | DL    | Defensive Lineman  | DE, DT     |
+                | LB    | Outside Linebacker | OLB, MLB   |
+                | DB    | Defensive Back     | CB, S      |
+                | K     | Kicker             | K          |
+
+                ### `team` 
+
+                | value | name          | secondary groups |
+                | ----- | ------------- | ---------------- |
+                | OFF   | Offense       | QB, SP, OL       |
+                | DEF   | Defense       | DL, LB, DB       |
+                | ST    | Special Teams | K                |
+                """
+            )
+        }
+    )
+
+    mo.vstack(
+        [
+            mo.md(
+                """
+                <br>
+                """
+            ),
+            accordion,
+        ]
+    )
+    return (accordion,)
 
 
 @app.cell(hide_code=True)
