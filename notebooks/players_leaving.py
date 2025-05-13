@@ -26,7 +26,7 @@ def _(mo):
         - All 3 university team rosters will be processed at the same time
         - This action removes seniors and advances all player's `class` value
         - The following roster changes are handled manually:
-            - current season red shirts
+            - current season redshirts
             - transferring or drafted players
             - incoming recruits
 

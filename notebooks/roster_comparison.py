@@ -125,7 +125,7 @@ def _(find_project_path, mo, pl, season_form):
 
 @app.cell
 def _(combined_roster, pl):
-    # df = combined_roster.filter((pl.col("class") == "FR") & (~pl.col("red_shirt")))
+    # df = combined_roster.filter((pl.col("class") == "FR") & (~pl.col("redshirt")))
     # df = df.group_by(["university", "dev_trait"]).agg(pl.len().alias("count"))
     df = combined_roster.group_by(["university", "dev_trait"]).agg(pl.len().alias("count"))
     df = df.pivot(on="dev_trait", values="count")

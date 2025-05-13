@@ -153,7 +153,7 @@ def _(mo):
             - **SO** (sophomore)
             - **JR** (junior)
             - **SR** (senior)
-        - Red shirt status: earned by playing a snap in 4 games or less within a given season.
+        - Redshirt status: earned by playing a snap in 4 games or less within a given season.
 
         #### Dev Trait per Position/Group
         - There are four dev traits: **normal**, **impact**, **star**, and **elite**.
@@ -167,7 +167,7 @@ def _(mo):
 @app.cell
 def _(pl, roster):
     classes = roster.select("class").unique().sort("class")
-    red_shirts = roster.select("red_shirt").unique().sort("red_shirt")
+    redshirts = roster.select("redshirt").unique().sort("redshirt")
     dev_traits = roster.select("dev_trait").unique().sort("dev_trait")
     positions = roster.select("position").unique().sort("position")
     groups = roster.select("group").unique().sort("group")
@@ -178,8 +178,8 @@ def _(pl, roster):
     # order was correct but the deployed WASM app had random ordering when relying on a
     # string sequence instead of an integer sequence).
     class_order = {cls: index for index, cls in enumerate(classes["class"])}
-    red_shirt_order = {
-        red_shirt: index for index, red_shirt in enumerate(red_shirts["red_shirt"])
+    redshirt_order = {
+        redshirt: index for index, redshirt in enumerate(redshirts["redshirt"])
     }
     dev_trait_order = {
         dev_trait: index for index, dev_trait in enumerate(dev_traits["dev_trait"])
@@ -196,7 +196,7 @@ def _(pl, roster):
         pl.col("group").replace_strict(group_order).alias("group_order"),
         pl.col("class").replace_strict(class_order).alias("class_order"),
         pl.col("dev_trait").replace_strict(dev_trait_order).alias("dev_trait_order"),
-        pl.col("red_shirt").replace_strict(red_shirt_order).alias("red_shirt_order"),
+        pl.col("redshirt").replace_strict(redshirt_order).alias("redshirt_order"),
     )
     return (
         class_order,
@@ -207,8 +207,8 @@ def _(pl, roster):
         groups,
         position_order,
         positions,
-        red_shirt_order,
-        red_shirts,
+        redshirt_order,
+        redshirts,
         roster_with_order,
         secondary_groups,
     )
@@ -222,9 +222,9 @@ def _(mo, running_locally):
 
 @app.cell
 def _(roster_with_order):
-    # Include grouping by `red_shirt` in order to capture the distribution
-    # of red shirts for each class.
-    player_classes = roster_with_order.group_by(["class", "red_shirt", "class_order"]).len(
+    # Include grouping by `redshirt` in order to capture the distribution
+    # of redshirts for each class.
+    player_classes = roster_with_order.group_by(["class", "redshirt", "class_order"]).len(
         "count"
     )
     return (player_classes,)
@@ -641,7 +641,7 @@ def _(mo, overall_slider):
 @app.cell(hide_code=True)
 def _(overall_slider, pl, roster):
     _draft_eligible_non_senior = (pl.col("class") == "JR") | (
-        (pl.col("class") == "SO") & (pl.col("red_shirt") == True)
+        (pl.col("class") == "SO") & (pl.col("redshirt") == True)
     )
 
     roster.filter(
@@ -1209,19 +1209,19 @@ def _(ChartSharedProperties, alt, color_1, color_2, pl):
                 ),
                 y=alt.Y("count:Q", title="Players"),
                 color=alt.Color(
-                    "red_shirt:N",
+                    "redshirt:N",
                     scale=alt.Scale(
                         domain=[True, False],
                         range=[color_1, color_2],
                     ),
-                    sort={"field": "red_shirt_order"},
-                    title="Red Shirt Status",
+                    sort={"field": "redshirt_order"},
+                    title="Redshirt Status",
                 ),
-                order="red_shirt:O",
+                order="redshirt:O",
                 tooltip=[
                     alt.Tooltip(f"{column_name}:N", title=f"{column_name.title()}"),
                     alt.Tooltip("count:Q", title="Players"),
-                    alt.Tooltip("red_shirt:N", title="Red Shirt Status"),
+                    alt.Tooltip("redshirt:N", title="Redshirt Status"),
                 ],
             )
             .properties(
