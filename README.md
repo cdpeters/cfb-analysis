@@ -3,10 +3,12 @@
 ## **Overview of Project**
 The following project analyzes three college football rosters managed
 individually by three human users (myself and two friends) within the dynasty
-mode of a video game called EA Sports College Football 25 (CFB 25). The goal of
-the project was to create a tool that helps make the recruiting portion of the
-game easier by collecting data from different screens within the mode and
-displaying it in a readily accessible and consistent format.
+mode of a video game called EA Sports College Football 25 (CFB 25). The dynasty
+mode allows for users to play multiple seasons while also participating in
+roster building through the recruiting process. The goal of the project was to
+create a tool that helps make the recruiting portion of the game easier by
+collecting data from different screens within the mode for display in a readily
+accessible and consistent format.
 
 The result of this effort is an app that allows a user to view a given roster,
 transform the roster into alternate views, see visualizations related to roster
@@ -30,23 +32,26 @@ App](https://cdpeters.github.io/cfb-analysis/).
 The roster data is collected manually and contained within three separate Excel
 files, one for each of the three universities analyzed. Each sheet within the
 file contains the roster for a given season (indicated by the sheet name). The
-Excel files are located in the
+dynasty mode of CFB 25 starts in the 2024 season, but data was only collected
+for the 2029 and 2030 seasons. The Excel files are located in the
 [`data/datasets/`](https://github.com/cdpeters/cfb-analysis/tree/main/data/datasets)
-folder of the repo.
+folder.
 
 ### **Notebooks**
 The relevant `marimo` notebooks can be found in the
 [`notebooks/`](https://github.com/cdpeters/cfb-analysis/tree/main/notebooks)
-folder of the repo. The primary analysis notebook that the web app is also
-derived from is
+folder. The primary analysis notebook that the web app is derived from is
 [`roster_analysis.py`](https://github.com/cdpeters/cfb-analysis/blob/main/notebooks/roster_analysis.py).
+
 There is an additional analysis notebook,
 [`roster_comparison.py`](https://github.com/cdpeters/cfb-analysis/blob/main/notebooks/roster_comparison.py),
 that aims to compare the three rosters of a given season directly but is
-currently a work in progress. Lastly, the notebook
+currently a work in progress.
+
+Lastly, the notebook
 [`players_leaving.py`](https://github.com/cdpeters/cfb-analysis/blob/main/notebooks/players_leaving.py)
-is for updating the roster files with a new sheet for the next season with the
-seniors removed and the class standing for each player advanced by one year
+is used for updating the roster files with a new sheet for the next season with
+seniors removed and class standing for each player advanced by one year
 (freshman to sophomore, sophomore to junior, etc.). `utilities.py` is a
 supporting file for `players_leaving.py`.
 
@@ -54,8 +59,8 @@ supporting file for `players_leaving.py`.
 When `roster_analysis.py` is run locally, the visualizations that get created
 for a specific university and season get saved in the
 [`data/images/`](https://github.com/cdpeters/cfb-analysis/tree/main/data/images)
-folder in the repo. There are also some images from `roster_comparison.py`
-located in the same folder.
+folder. There are also some images from `roster_comparison.py` located in the
+same folder.
 
 ### **Run the Project Locally**
 The project can be run locally via the following instructions. These
@@ -92,17 +97,17 @@ instructions assume the usage of the package manager `uv`.
 
 ## **Analysis**
 Analysis is performed on the selected university's roster for the selected
-season. The following sections detail the purpose and some of the implementation
-of each analysis within the app. The images below serve as examples of views
-within the app with `Fresno State` and `2030` selected as the university and
-season inputs respectively.
+season as chosen by the user of the app. The following sections detail the
+purpose and some of the implementation of each analysis section. The images
+below serve as examples of views within the app with `Fresno State` and `2030`
+selected as the university and season inputs respectively.
 
 ### **Roster Viewer**
 The roster viewer is a general tool that allows for creating many different
 views of the roster as needed. The idea is for the user to use the viewer for
-arbitrary queries that they're interested in that are not covered in the
-sections following this one. The viewer itself is a `marimo.ui.dataframe` UI
-element that comes with all the transformation capabilities built-in.
+arbitrary queries they're interested in that are not covered in the sections
+following this one. The viewer itself is a `marimo.ui.dataframe` UI element that
+comes with all the transformation capabilities built-in.
 
 The following image shows an example of the roster viewer UI element:
 
@@ -121,14 +126,25 @@ some of the transformations include:
 - sampling rows
 
 ### **Player Class Distribution**
+The player class distribution shows the number of players per each class
+standing on a given roster. The distribution also displays the balance of
+redshirted players versus non-redshirted players.
 
+A redshirt year is just a year where the player is allowed to practice and
+develop with the team as well as participate in up to four games without using
+up a year of NCAA eligibility. A user can only make a player redshirt for one
+season total (it can be any season before graduation) or they can choose to not
+redshirt them at all. When a player is redshirted, their class standing for that
+year is not advanced.
+
+The image below shows an example class distribution:
 
 <div align="center">
     <img src="data/images/fresno_state/2030/2030_player_classes_fresno_state.svg"
          alt="fresno state player class distribution" />
 </div>
 
-
+Typical of most class distributions, the largest group of players is the freshman class (includes incoming freshman and freshman from the prior year that have been redshirted). Another typical trend is that most players end up getting redshirted at some point so there are very few non-redshirted upperclassmen.
 
 ### **Development Traits per Position/Group**
 
