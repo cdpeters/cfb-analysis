@@ -125,7 +125,13 @@ some of the transformations include:
 - aggregating
 - sampling rows
 
-### **Player Class Distribution**
+### **Exploratory Analysis**
+#### **Player Class Distribution and Dev Trait per Position/Group**
+The following two subsections focus on some basic visualizations that allow a
+user to get a quick sense of where their roster is at currently. Some of the
+aspects that are covered are class distribution, redshirted players, numbers at
+positions/groups, and development traits across the roster.
+##### **Player Class Distribution**
 The player class distribution shows the number of players per each class
 standing on a given roster. The distribution also displays the balance of
 redshirted players versus non-redshirted players.
@@ -144,33 +150,55 @@ The image below shows an example class distribution:
          alt="fresno state player class distribution" />
 </div>
 
-Typical of most class distributions, the largest group of players is the freshman class (includes incoming freshman and freshman from the prior year that have been redshirted). Another typical trend is that most players end up getting redshirted at some point so there are very few non-redshirted upperclassmen.
+Typical of most class distributions, the largest group of players is the
+freshman class (includes incoming freshman and freshman from the prior year that
+have been redshirted). Another typical trend is that most players end up getting
+redshirted at some point so there are very few non-redshirted upperclassmen.
 
-### **Development Traits per Position/Group**
+##### **Development Traits per Position/Group**
+In CFB 25, players have one of four development traits that dictate the rate at
+which they improve over a season. The four traits, in order of fastest
+progression to slowest, are **elite**, **star**, **impact**, and **normal**. The
+obvious aim for the user would be to try to build a roster containing as many
+players with the higher quality traits (**elite** and **star**) as possible.
+This is the motivation for the development traits per position/group charts
+shown below. The charts allow the user to see where there might be weaknesses in
+player potential around their roster. Note that these charts do not take into
+account what the player overall ratings are, something to consider via other
+views of the data.
 
+Aside from the focus on development traits, the charts also capture the numbers
+of players per position/group. This information helps during recruiting and when
+considering position changes when the user has to consider what number of
+players to have at the different positions/groups.
+
+The example charts below only show breakdowns per group for brevity. The
+following image shows the breakdown considering all four traits.
 
 <div align="center">
     <img src="data/images/fresno_state/2030/2030_dev_per_group_fresno_state.svg"
          alt="development traits per group 2030 fresno state" />
 </div>
 
-
+The chart below considers only the higher quality traits of **elite** and
+**star** making it easier to see where there are deficiencies.
 
 <div align="center">
     <img src="data/images/fresno_state/2030/2030_star_elite_per_group_fresno_state.svg"
          alt="star and elite players per group 2030 fresno state" />
 </div>
 
-
+Lastly, a special breakdown is included that further splits the data into facets
+representing the class standing of the players. This pipeline view makes it
+easier to identify strengths and weaknesses especially when you need to see what
+type of players will be leaving the roster soon.
 
 <div align="center">
     <img src="data/images/fresno_state/2030/2030_dev_per_group_pipeline_fresno_state.svg"
          alt="development trait pipeline per group 2030 fresno state" />
 </div>
 
-
-
-### **Potential Non-Senior Drafted Players**
+#### **Potential Non-Senior Drafted Players**
 
 
 <div align="center">
@@ -180,7 +208,7 @@ Typical of most class distributions, the largest group of players is the freshma
 
 
 
-### **Young Player Quality**
+#### **Young Player Quality**
 
 
 <div align="center">
@@ -190,7 +218,7 @@ Typical of most class distributions, the largest group of players is the freshma
 
 
 
-### **Players to Cut**
+#### **Players to Cut**
 
 
 <div align="center">
