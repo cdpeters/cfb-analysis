@@ -111,9 +111,10 @@ comes with all the transformation capabilities built-in.
 
 The following image shows an example of the roster viewer UI element:
 
-<div align="center">
+<div style="text-align: center;">
     <img src="data/images/README_images/roster_viewer_2030_fresno_state.svg"
-         alt="roster viewer 2030 fresno state" />
+         alt="roster viewer 2030 fresno state"
+         style="max-width: 720px;" />
 </div>
 
 Users can add/delete transformations at any time and even see the resulting
@@ -145,9 +146,10 @@ year is not advanced.
 
 The image below shows an example class distribution:
 
-<div align="center">
+<div style="text-align: center;">
     <img src="data/images/fresno_state/2030/2030_player_classes_fresno_state.svg"
-         alt="fresno state player class distribution" />
+         alt="fresno state player class distribution"
+         style="max-width: 350px;" />
 </div>
 
 Typical of most class distributions, the largest group of players is the
@@ -175,17 +177,19 @@ players to have at the different positions/groups.
 The example charts below only show breakdowns per group for brevity. The
 following image shows the breakdown considering all four traits.
 
-<div align="center">
+<div style="text-align: center;">
     <img src="data/images/fresno_state/2030/2030_dev_per_group_fresno_state.svg"
-         alt="development traits per group 2030 fresno state" />
+         alt="development traits per group 2030 fresno state"
+         style="max-width: 550px;" />
 </div>
 
 The chart below considers only the higher quality traits of **elite** and
 **star** making it easier to see where there are deficiencies.
 
-<div align="center">
+<div style="text-align: center;">
     <img src="data/images/fresno_state/2030/2030_star_elite_per_group_fresno_state.svg"
-         alt="star and elite players per group 2030 fresno state" />
+         alt="star and elite players per group 2030 fresno state"
+         style="max-width: 550px;" />
 </div>
 
 Lastly, a special breakdown is included that further splits the data into facets
@@ -193,17 +197,19 @@ representing the class standing of the players. This pipeline view makes it
 easier to identify strengths and weaknesses especially when you need to see what
 type of players will be leaving the roster soon.
 
-<div align="center">
+<div style="text-align: center;">
     <img src="data/images/fresno_state/2030/2030_dev_per_group_pipeline_fresno_state.svg"
-         alt="development trait pipeline per group 2030 fresno state" />
+         alt="development trait pipeline per group 2030 fresno state"
+         style="max-width: 620px;" />
 </div>
 
 #### **Potential Non-Senior Drafted Players**
 
 
-<div align="center">
+<div style="text-align: center;">
     <img src="data/images/README_images/potential_non_senior_drafted_2030_fresno_state.svg"
-         alt="potential non-senior drafted players 2030 fresno state" />
+         alt="potential non-senior drafted players 2030 fresno state"
+         style="max-width: 720px;" />
 </div>
 
 
@@ -211,9 +217,10 @@ type of players will be leaving the roster soon.
 #### **Young Player Quality**
 
 
-<div align="center">
+<div style="text-align: center;">
     <img src="data/images/README_images/young_player_quality_2030_fresno_state.svg"
-         alt="young player quality 2030 fresno state" />
+         alt="young player quality 2030 fresno state"
+         style="max-width: 720px;" />
 </div>
 
 
@@ -221,9 +228,10 @@ type of players will be leaving the roster soon.
 #### **Players to Cut**
 
 
-<div align="center">
+<div style="text-align: center;">
     <img src="data/images/README_images/players_to_cut_2030_fresno_state.svg"
-         alt="players to cut 2030 fresno state" />
+         alt="players to cut 2030 fresno state"
+         style="max-width: 720px;" />
 </div>
 
 
