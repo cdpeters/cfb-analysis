@@ -17,18 +17,18 @@ def _(mo):
         The following app can be used to explore your College Football 25 (CFB 25) dynasty roster. The UI elements are interactive, feel free to interact with an element's controls to see new views of the data.
 
         ## Overview
+        ### Roster Tools
+        The following roster tools allow for exploration and analysis of distributions of players based on class standing, development traits, overall ratings, and more. In addition to analysis tools, there is also a convenience tool for helping with roster cuts.
 
-        ### Roster Viewer
-        The **Roster Viewer** allows you to transform the view of the full roster. Transformations include filtering, grouping, aggregating, and sorting among other operations.
+        - **Roster Viewer** - see any view of the roster with general roster transformations. Transformations include filtering, grouping, aggregating, and sorting, among other operations
 
-        ### Exploratory Analysis
-        This section contains charts as well as specific views of the roster (pre-applied transformations).
-
-        #### Sections include:
-        - **Player Class Distribution and Dev Trait per Position/Group**
-        - **Potential Non-Senior Drafted Players**
-        - **Young Player Quality**
-        - **Players to Cut**
+        - **Player Class Standing and Development Traits** - distributions based on class standing and development traits. The visualizations include:
+            - class distribution
+            - dev traits per position/group
+            - dev trait pipeline per position/group
+        - **Potential Non-Senior Drafted Players** - strongly performing draft eligible players that might leave early for the NFL draft
+        - **Young Player Quality** - talent level of underclassmen players by position group
+        - **Players to Cut** - a convenience tool for gathering a list of names for roster cuts
 
         ### Glossary
         There is a glossary at the bottom of the page. The glossary contains tables explaining the values found in some of the columns of the dataset.
@@ -126,7 +126,8 @@ def _(
 def _(mo):
     mo.md(
         r"""
-        ## Roster Viewer
+        ## Roster Tools
+        ### Roster Viewer
         The standard view of the roster is shown. Transformations can be applied to create alternate views. Additionally, the column names can be clicked on for further transformation options.
         """
     )
@@ -143,9 +144,7 @@ def _(mo, roster):
 def _(mo):
     mo.md(
         r"""
-        ## Exploratory Analysis
-
-        ### Player Class Distribution and Dev Trait per Position/Group
+        ### Player Class Standing and Development Traits
 
         #### Player Class Distribution
         - There are four classes:
