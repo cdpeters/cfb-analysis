@@ -1,0 +1,29 @@
+[project]
+name = "cfb-analysis"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = []
+
+[dependency-groups]
+dev = [
+    "marimo[lsp]>=0.23.14",
+    "ruff>=0.15.22",
+    "ty>=0.0.61",
+]
+
+[tool.marimo.diagnostics]
+enabled = true
+
+[tool.marimo.language_servers.pylsp]
+enabled = true
+enable_mypy = false
+enable_ruff = true
+enable_flake8 = false
+enable_pydocstyle = false
+enable_pylint = false
+enable_pyflakes = false
+
+[tool.marimo.language_servers.ty]
+enabled = true
