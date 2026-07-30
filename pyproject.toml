@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
     "dxcam-cpp>=0.2.5",
+    "loguru>=0.7.3",
     "pywin32>=312",
     "vgamepad>=0.1.0",
 ]
@@ -36,3 +37,6 @@ enabled = true
 [tool.marimo.display]
 custom_css = ["notebooks/public/custom-theme.css"]
 default_width = "medium"
+
+[tool.ruff.lint]
+extend-select = ["I"]
