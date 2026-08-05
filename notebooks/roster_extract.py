@@ -9,6 +9,7 @@ def _(mo):
     mo.md(r"""
     ### Launch the `chiaki-ng` Client and Wait for Window to be Drawn
     """)
+    return
 
 
 @app.cell
@@ -212,12 +213,14 @@ def _(mo):
     mo.md(r"""
     ### Main Launch Sequence
     """)
+    return
 
 
-@app.cell(disabled=True)
+@app.cell
 def _(
     Templates,
     VirtualController,
+    launch_cfb_game,
     launch_chiaki_process,
     logger,
     poll_for_template_match,
@@ -229,17 +232,22 @@ def _(
     wait_and_focus_window(window_title=window_title)
     # Look for the PS5 settings icon to be present. This indicates the
     # connection is ready to start accepting controller inputs.
-    is_ready = poll_for_template_match(
+    poll_for_template_match(
         template=Templates.PS5_SETTINGS_ICON.template,
         region=Templates.PS5_SETTINGS_ICON.region,
         log_context=Templates.PS5_SETTINGS_ICON.log_context,
         timeout=45.0,
     )
 
-    if is_ready:
-        logger.info("Initializing DS4 gamepad emulation...")
-        # Emulating a DualShock 4 is standard for remote play clients
-        controller = VirtualController()
+    logger.info("Initializing DS4 gamepad emulation...")
+    # Emulating a DualShock 4 is standard for remote play clients
+    controller = VirtualController()
+
+    launch_cfb_game(
+        template=Templates.CFB27_GAME_TILE.template,
+        region=Templates.CFB27_GAME_TILE.region,
+        log_context=Templates.CFB27_GAME_TILE.log_context,
+    )
     return (controller,)
 
 
@@ -248,6 +256,7 @@ def _(mo):
     mo.md(r"""
     ### UI Manipulation Controller Functions
     """)
+    return
 
 
 @app.cell
@@ -431,14 +440,54 @@ def _(Callable, Controller, time, vg):
 
 
 @app.cell
-def _(Controller, controller, logger, np, poll_for_template_match):
-    def launch_target_game(
+def _(
+    CFBGameTileNotFoundError,
+    Controller,
+    controller,
+    logger,
+    np,
+    poll_for_template_match,
+):
+    def launch_cfb_game(
         template: np.ndarray,
         region: tuple[int, int, int, int],
         log_context: str,
         max_attempts: int = 10,
     ) -> None:
-        """Navigate the PS5 home screen to find and launch the game."""
+        """
+        Navigates the PS5 home screen to find and launch College Football.
+
+        Iterates through the recent games list on the PS5 home screen, opening
+        the "Information" menu for each tile to reliably check the game's icon
+        against the provided template. If found, it launches the game.
+
+        Parameters
+        ----------
+        template : np.ndarray
+            A grayscale image array used as the template for OpenCV matching
+            (the CFB game tile).
+        region : tuple[int, int, int, int]
+            The bounding box coordinates (left, top, right, bottom) of the
+            screen region to capture for the evaluation.
+        log_context : str
+            A descriptive string detailing what is being matched to provide
+            context in the logs.
+        max_attempts : int, optional
+            The maximum number of game tiles to shift through before failing.
+            Default is 10.
+
+        Returns
+        -------
+        None
+            Returned implicitly if the game tile is successfully found and the
+            launch sequence completes.
+
+        Raises
+        ------
+        CFBGameTileNotFoundError
+            If the target game tile cannot be located after shifting through the
+            specified maximum number of attempts.
+        """
         logger.info("Moving from welcome tile to the first game tile...")
         controller.tap_dpad(Controller.DPAD_RIGHT)
 
@@ -454,47 +503,33 @@ def _(Controller, controller, logger, np, poll_for_template_match):
             # Cross to select the "Information" option.
             controller.tap_button(Controller.CROSS, rest_time=1.5)
 
-            # Look for a match with the CFB27 game tile template.
-            is_target_game = poll_for_template_match(
-                template=template,
-                region=region,
-                log_context=log_context,
-                timeout=5.0,
-            )
-
-            # Circle to back out.
-            controller.tap_button(Controller.CIRCLE, rest_time=1.0)
-
-            # If a match is found, launch the game. Otherwise move to the next
-            # game tile.
-            if is_target_game:
-                logger.success("Target game located. Launching...")
-                controller.tap_button(Controller.CROSS)
-                return
-            else:
+            # Look for a match with the CFB game tile template.
+            try:
+                poll_for_template_match(
+                    template=template,
+                    region=region,
+                    log_context=log_context,
+                    timeout=5.0,
+                )
+            except TimeoutError:
+                # Circle to back out of "Information" screen.
+                controller.tap_button(Controller.CIRCLE, rest_time=1.0)
                 logger.info("Target game not found. Shifting to next tile...")
                 controller.tap_dpad(Controller.DPAD_RIGHT)
+                continue
+
+            # Circle to back out of "Information" screen.
+            controller.tap_button(Controller.CIRCLE, rest_time=1.0)
+            logger.success("Target game located. Launching...")
+            controller.tap_button(Controller.CROSS)
+            return
 
         logger.error(f"Failed to locate the game after {max_attempts} tiles.")
-        raise RuntimeError(f"Target game could not be located after {max_attempts} tile shifts.")
+        raise CFBGameTileNotFoundError(
+            f"Target game could not be located after {max_attempts} tile shifts."
+        )
 
-    return (launch_target_game,)
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    ### Find and Launch College Football 27
-    """)
-
-
-@app.cell(disabled=True)
-def _(Templates, launch_target_game):
-    launch_target_game(
-        template=Templates.CFB27_GAME_TILE.template,
-        region=Templates.CFB27_GAME_TILE.region,
-        log_context=Templates.CFB27_GAME_TILE.log_context,
-    )
+    return (launch_cfb_game,)
 
 
 @app.cell(hide_code=True)
@@ -502,13 +537,15 @@ def _(mo):
     mo.md(r"""
     #### Close Game Function
     """)
+    return
 
 
 @app.cell
 def _(Controller, controller):
-    def close_game() -> None:
+    def close_cfb() -> None:
         controller.tap_special_button(Controller.PS)
 
+    return
 
 
 @app.cell(hide_code=True)
@@ -517,6 +554,7 @@ def _(mo):
     ## Appendix
     ### Imports, Logging Configuration, and Dots Per Inch (DPI) Awareness
     """)
+    return
 
 
 @app.cell
@@ -634,6 +672,7 @@ def _(mo):
     mo.md(r"""
     ### Constants
     """)
+    return
 
 
 @app.cell
@@ -680,9 +719,20 @@ def _(IntEnum, NamedTuple, Path, cv2, dxcam, np, vg):
         PS = vg.DS4_SPECIAL_BUTTONS.DS4_SPECIAL_BUTTON_PS
         OPTIONS = vg.DS4_BUTTONS.DS4_BUTTON_OPTIONS
 
+    class CFBGameTileNotFoundError(Exception):
+        """Raised when the CFB game tile is not found on the PS5 home screen."""
+
+        pass
+
     window_title = "chiaki-ng"
     camera = dxcam.create(device_idx=0, output_idx=0, output_color="BGRA")  # ty: ignore
-    return Controller, Templates, camera, window_title
+    return (
+        CFBGameTileNotFoundError,
+        Controller,
+        Templates,
+        camera,
+        window_title,
+    )
 
 
 @app.cell(hide_code=True)
@@ -690,6 +740,7 @@ def _(mo):
     mo.md(r"""
     ### Preview Image Capture (for prototyping)
     """)
+    return
 
 
 @app.cell
@@ -747,6 +798,7 @@ def _(Image, camera, cv2, mo, time):
     #     600,
     # )
     # preview_capture(region=_test_region)
+    return
 
 
 @app.cell(hide_code=True)
@@ -754,6 +806,7 @@ def _(mo):
     mo.md(r"""
     ### Convert Image Templates to Grayscale
     """)
+    return
 
 
 @app.cell
@@ -790,6 +843,7 @@ def _(Path, cv2, logger):
         else:
             logger.error(f"Failed to read or convert: {template_path.name}")
 
+    return
 
 
 if __name__ == "__main__":
