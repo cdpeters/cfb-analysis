@@ -7,260 +7,34 @@ app = marimo.App()
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ### Launch the `chiaki-ng` Client and Wait for Window to be Drawn
-    """)
-    return
-
-
-@app.cell
-def _(Path, logger, subprocess, time, win32gui):
-    def launch_chiaki_process() -> None:
-        """
-        Launches the chiaki-ng application subprocess.
-
-        Raises
-        ------
-        FileNotFoundError
-            If the chiaki-ng executable cannot be found at the specified path.
-        Exception
-            If the underlying subprocess fails to execute.
-        """
-        logger.info("Starting chiaki-ng launch sequence...")
-        chiaki_path = Path(r"C:\Program Files\chiaki-ng\chiaki.exe")
-
-        if not chiaki_path.exists():
-            logger.error(f"Executable not found at: {chiaki_path}")
-            raise FileNotFoundError(f"Could not find chiaki-ng at {chiaki_path}")
-
-        try:
-            subprocess.Popen([chiaki_path])
-            logger.debug(f"Executed subprocess: {chiaki_path}")
-        except Exception:
-            logger.exception("Failed to execute chiaki-ng subprocess.")
-            raise
-
-    def wait_and_focus_window(window_title: str, timeout: float = 30.0) -> int:
-        """
-        Waits for the `window_title` window to be ready.
-
-        Polls the OS for a specific window, waits for it to become visible,
-        and brings it to the foreground.
-
-        Parameters
-        ----------
-        window_title : str
-            The exact exact title of the window to search for.
-        timeout : float, optional
-            The maximum time in seconds to poll for the window. Default is
-            30.0.
-
-        Returns
-        -------
-        int
-            The window handle (HWND) of the found window.
-
-        Raises
-        ------
-        TimeoutError
-            If the window is not found or visible within the timeout period.
-        """
-        start_time = time.time()
-
-        logger.info(f"Polling OS for window '{window_title}' (Timeout: {timeout}s)...")
-
-        while time.time() - start_time < timeout:
-            hwnd = win32gui.FindWindow(None, window_title)
-
-            if hwnd and win32gui.IsWindowVisible(hwnd):
-                elapsed = round(time.time() - start_time, 2)
-                logger.success(
-                    f"Window '{window_title}' found and visible after {elapsed}s."
-                )
-
-                # Ensure the window is active and focused.
-                win32gui.SetForegroundWindow(hwnd)
-                return hwnd
-
-            # Pause briefly to prevent CPU thrashing while polling the OS for
-            # the window.
-            time.sleep(0.1)
-
-        logger.error(f"Window polling timed out after {timeout} seconds.")
-        raise TimeoutError(
-            f"Window '{window_title}' failed to launch within the timeout period."
-        )
-
-    return launch_chiaki_process, wait_and_focus_window
-
-
-@app.cell
-def _(camera, cv2, logger, np, time):
-    def is_image_match(
-        frame: np.ndarray, template: np.ndarray, confidence_threshold: float = 0.90
-    ) -> tuple[bool, float]:
-        """
-        Evaluates a single image frame against a template using OpenCV.
-
-        Converts the provided color frame to grayscale and performs template
-        matching to determine if the target template is present within the
-        frame.
-
-        Parameters
-        ----------
-        frame : np.ndarray
-            The BGR color image array (captured frame) to be evaluated.
-        template : np.ndarray
-            The grayscale image array used as the template for matching.
-        confidence_threshold : float, optional
-            The minimum match value (0.0 to 1.0) required to consider it a
-            successful match. Default is 0.90.
-
-        Returns
-        -------
-        tuple[bool, float]
-            A tuple containing:
-            - A boolean indicating if the best match exceeds the confidence
-            threshold.
-            - A float representing the maximum confidence score found in the
-            frame.
-        """
-        gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGRA2GRAY)
-        result = cv2.matchTemplate(gray_frame, template, cv2.TM_CCOEFF_NORMED)
-        _, max_val, _, _ = cv2.minMaxLoc(result)
-
-        return max_val > confidence_threshold, max_val
-
-    def poll_for_template_match(
-        template: np.ndarray,
-        region: tuple[int, int, int, int],
-        log_context: str,
-        timeout: float = 5.0,
-        confidence_threshold: float = 0.90,
-    ) -> None:
-        """
-        Manages the camera polling loop to wait for a visual match.
-
-        Starts a background capture thread and continuously checks the
-        specified screen region. It delegates the actual visual evaluation to
-        `is_image_match`. The loop runs until a match exceeding the
-        confidence threshold is found or the timeout is reached.
-
-        Parameters
-        ----------
-        template : np.ndarray
-            A grayscale image array used as the template for OpenCV matching.
-        region : tuple[int, int, int, int]
-            The bounding box coordinates (left, top, right, bottom) of the
-            screen region to capture.
-        log_context : str
-            A descriptive string detailing what is being matched (e.g.,
-            "PS5 Home Screen" or "CFB 27 Game Tile") to provide context in
-            the logs.
-        timeout : float, optional
-            The maximum time in seconds to wait for a successful match.
-            Default is 5.0.
-        confidence_threshold : float, optional
-            The minimum match value (0.0 to 1.0) required to register a
-            success. Default is 0.90.
-
-        Raises
-        ------
-        TimeoutError
-            If a match exceeding the confidence threshold is not found within
-            the timeout period.
-        """
-        logger.info(
-            f"Starting background capture thread: Polling for '{log_context}'..."
-        )
-        # Start a background camera thread to continuously capture frames.
-        camera.start(target_fps=10, region=region)
-        start_time = time.time()
-
-        # Use try-finally block to ensure the background camera thread is
-        # stopped even if an error occurs.
-        try:
-            while time.time() - start_time < timeout:
-                frame = camera.get_latest_frame()
-
-                if frame is not None and frame.max() > 0:
-                    is_match, confidence = is_image_match(
-                        frame, template, confidence_threshold
-                    )
-
-                    if is_match:
-                        logger.success(
-                            f"Successfully matched '{log_context}'! (Confidence: {confidence:.2f})"
-                        )
-                        return
-
-                # Sync with the 10 FPS background camera thread to prevent
-                # redundant cv2 processing.
-                time.sleep(0.1)
-
-            logger.error(
-                f"Polling for '{log_context}' timed out after {timeout} seconds."
-            )
-            raise TimeoutError(f"Failed to match '{log_context}' within {timeout}s.")
-
-        finally:
-            camera.stop()
-
-    return (poll_for_template_match,)
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
     ### Main Launch Sequence
     """)
     return
 
 
 @app.cell
-def _(
-    Templates,
-    VirtualController,
-    launch_cfb_game,
-    launch_chiaki_process,
-    logger,
-    poll_for_template_match,
-    wait_and_focus_window,
-    window_title,
-):
-    # Execute the startup sequence.
-    launch_chiaki_process()
-    wait_and_focus_window(window_title=window_title)
-    # Look for the PS5 settings icon to be present. This indicates the
-    # connection is ready to start accepting controller inputs.
-    poll_for_template_match(
-        template=Templates.PS5_SETTINGS_ICON.template,
-        region=Templates.PS5_SETTINGS_ICON.region,
-        log_context=Templates.PS5_SETTINGS_ICON.log_context,
-        timeout=45.0,
-    )
-
-    logger.info("Initializing DS4 gamepad emulation...")
-    # Emulating a DualShock 4 is standard for remote play clients
-    controller = VirtualController()
-
+def _(Templates, launch_cfb_game, launch_ps5):
+    launch_ps5()
     launch_cfb_game(
-        template=Templates.CFB27_GAME_TILE.template,
-        region=Templates.CFB27_GAME_TILE.region,
-        log_context=Templates.CFB27_GAME_TILE.log_context,
+        template=Templates.CFB_GAME_TILE.template,
+        region=Templates.CFB_GAME_TILE.region,
+        log_context=Templates.CFB_GAME_TILE.log_context,
     )
-    return (controller,)
+    # launch_dynasty()
+    # navigate_to_rosters()
+    return
 
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ### UI Manipulation Controller Functions
+    ### `VirtualController`
     """)
     return
 
 
 @app.cell
-def _(Callable, Controller, time, vg):
+def _(Callable, Controller, logger, time, vg):
     class VirtualController:
         """
         A wrapper class to manage controller emulation and input sequences.
@@ -436,7 +210,10 @@ def _(Callable, Controller, time, vg):
                 rest_time=rest_time,
             )
 
-    return (VirtualController,)
+    logger.info("Initializing DS4 gamepad emulation...")
+    # Emulating a DualShock 4 is standard for remote play clients
+    controller = VirtualController()
+    return (controller,)
 
 
 @app.cell
@@ -540,7 +317,7 @@ def _(mo):
     return
 
 
-@app.cell
+@app.cell(disabled=True)
 def _(Controller, controller):
     def close_cfb() -> None:
         controller.tap_special_button(Controller.PS)
@@ -551,6 +328,7 @@ def _(Controller, controller):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
+    ___
     ## Appendix
     ### Imports, Logging Configuration, and Dots Per Inch (DPI) Awareness
     """)
@@ -670,52 +448,145 @@ def _():
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ### Constants
+    ### Constants and Custom Exceptions
     """)
     return
 
 
 @app.cell
 def _(IntEnum, NamedTuple, Path, cv2, dxcam, np, vg):
-    _project_dir = Path.cwd().parent
+    WINDOW_TITLE = "chiaki-ng"
+    camera = dxcam.create(device_idx=0, output_idx=0, output_color="BGRA")  # ty: ignore
+    _PROJECT_DIR = Path.cwd().parent
 
-    class TemplatePaths:
-        BASE_DIR: Path = _project_dir / "assets" / "templates"
+    class _TemplatePaths:
+        """
+        Centralized file paths for all OpenCV image templates.
+
+        Attributes
+        ----------
+        BASE_DIR : pathlib.Path
+            The root directory containing the template image assets.
+        PS5_SETTINGS_ICON : pathlib.Path
+            The file path to the PS5 home screen settings icon template.
+        CFB_GAME_TILE : pathlib.Path
+            The file path to the College Football game tile template.
+        """
+
+        BASE_DIR: Path = _PROJECT_DIR / "assets" / "templates"
         PS5_SETTINGS_ICON = BASE_DIR / "ps5_settings_icon.png"
-        CFB27_GAME_TILE = BASE_DIR / "cfb27_game_tile.png"
+        CFB_GAME_TILE = BASE_DIR / "cfb_game_tile.png"
 
-    class TemplateConfig(NamedTuple):
+    class _TemplateConfig(NamedTuple):
+        """
+        A structured configuration for a visual template matching target.
+
+        Attributes
+        ----------
+        template : np.ndarray
+            The grayscale image array loaded into memory for matching.
+        region : tuple[int, int, int, int]
+            The screen coordinates (left, top, right, bottom) defining the
+            bounding box to capture and search within.
+        log_context : str
+            A descriptive string identifying the target, utilized for context
+            in logging output.
+        """
+
         template: np.ndarray
         region: tuple[int, int, int, int]  # (left, top, right, bottom)
         log_context: str
 
     class Templates:
-        PS5_SETTINGS_ICON = TemplateConfig(
-            template=cv2.imread(TemplatePaths.PS5_SETTINGS_ICON, cv2.IMREAD_GRAYSCALE),  # ty: ignore
+        """
+        Pre-configured visual templates used throughout the pipeline.
+
+        This class acts as a namespace to hold instantiated `_TemplateConfig`
+        objects, ensuring templates are loaded into memory once and their
+        search regions are standardized.
+
+        Attributes
+        ----------
+        PS5_SETTINGS_ICON : _TemplateConfig
+            Configuration for detecting the settings icon on the PS5 home
+            screen.
+        CFB_GAME_TILE : _TemplateConfig
+            Configuration for detecting the College Football game tile.
+        """
+
+        PS5_SETTINGS_ICON = _TemplateConfig(
+            template=cv2.imread(_TemplatePaths.PS5_SETTINGS_ICON, cv2.IMREAD_GRAYSCALE),  # ty: ignore
             region=(1430, 20, 1520, 105),
             log_context="PS5 Home Screen",
         )
-        CFB27_GAME_TILE = TemplateConfig(
-            template=cv2.imread(TemplatePaths.CFB27_GAME_TILE, cv2.IMREAD_GRAYSCALE),  # ty: ignore
+        CFB_GAME_TILE = _TemplateConfig(
+            template=cv2.imread(_TemplatePaths.CFB_GAME_TILE, cv2.IMREAD_GRAYSCALE),  # ty: ignore
             region=(100, 140, 600, 600),
-            log_context="CFB27 Game Tile Search",
+            log_context="CFB Game Tile Search",
         )
 
     class Controller(IntEnum):
-        # D-Pad Directions
+        """
+        Mappings for virtual DualShock 4 (DS4) controller inputs.
+
+        This enumeration maps simplified, readable button names to the
+        underlying integer bitmasks and constants required by the `vgamepad`
+        library.
+
+        Attributes
+        ----------
+        DPAD_UP : int
+            The bitmask for the D-Pad North (Up) direction.
+        DPAD_DOWN : int
+            The bitmask for the D-Pad South (Down) direction.
+        DPAD_LEFT : int
+            The bitmask for the D-Pad West (Left) direction.
+        DPAD_RIGHT : int
+            The bitmask for the D-Pad East (Right) direction.
+        DPAD_NEUTRAL : int
+            The value representing a released or neutral D-Pad state.
+        SQUARE : int
+            The bitmask for the Square face button.
+        TRIANGLE : int
+            The bitmask for the Triangle face button.
+        CROSS : int
+            The bitmask for the Cross (X) face button.
+        CIRCLE : int
+            The bitmask for the Circle face button.
+        L1 : int
+            The bitmask for the L1 button.
+        R1 : int
+            The bitmask for the R1 button.
+        L2 : int
+            The bitmask for the L2 button.
+        R2 : int
+            The bitmask for the R2 button.
+        PS : int
+            The bitmask for the PlayStation (PS) special menu button.
+        OPTIONS : int
+            The bitmask for the Options menu button.
+        """
+
+        # D-Pad Directions.
         DPAD_UP = vg.DS4_DPAD_DIRECTIONS.DS4_BUTTON_DPAD_NORTH
         DPAD_DOWN = vg.DS4_DPAD_DIRECTIONS.DS4_BUTTON_DPAD_SOUTH
         DPAD_LEFT = vg.DS4_DPAD_DIRECTIONS.DS4_BUTTON_DPAD_WEST
         DPAD_RIGHT = vg.DS4_DPAD_DIRECTIONS.DS4_BUTTON_DPAD_EAST
         DPAD_NEUTRAL = vg.DS4_DPAD_DIRECTIONS.DS4_BUTTON_DPAD_NONE
 
-        # Face Buttons
+        # Face Buttons.
         SQUARE = vg.DS4_BUTTONS.DS4_BUTTON_SQUARE
         TRIANGLE = vg.DS4_BUTTONS.DS4_BUTTON_TRIANGLE
         CROSS = vg.DS4_BUTTONS.DS4_BUTTON_CROSS
         CIRCLE = vg.DS4_BUTTONS.DS4_BUTTON_CIRCLE
 
-        # Menu Buttons
+        # Bumpers and Triggers.
+        L1 = vg.DS4_BUTTONS.DS4_BUTTON_SHOULDER_LEFT
+        R1 = vg.DS4_BUTTONS.DS4_BUTTON_SHOULDER_RIGHT
+        L2 = vg.DS4_BUTTONS.DS4_BUTTON_TRIGGER_LEFT
+        R2 = vg.DS4_BUTTONS.DS4_BUTTON_TRIGGER_RIGHT
+
+        # Menu Buttons.
         PS = vg.DS4_SPECIAL_BUTTONS.DS4_SPECIAL_BUTTON_PS
         OPTIONS = vg.DS4_BUTTONS.DS4_BUTTON_OPTIONS
 
@@ -724,15 +595,304 @@ def _(IntEnum, NamedTuple, Path, cv2, dxcam, np, vg):
 
         pass
 
-    window_title = "chiaki-ng"
-    camera = dxcam.create(device_idx=0, output_idx=0, output_color="BGRA")  # ty: ignore
     return (
         CFBGameTileNotFoundError,
         Controller,
         Templates,
+        WINDOW_TITLE,
         camera,
-        window_title,
     )
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ### Template Matching Functions
+    """)
+    return
+
+
+@app.cell
+def _(camera, cv2, logger, np, time):
+    def _is_image_match(
+        frame: np.ndarray, template: np.ndarray, confidence_threshold: float = 0.90
+    ) -> tuple[bool, float]:
+        """
+        Evaluates a single image frame against a template using OpenCV.
+
+        Converts the provided color frame to grayscale and performs template
+        matching to determine if the target template is present within the
+        frame.
+
+        Parameters
+        ----------
+        frame : np.ndarray
+            The BGR color image array (captured frame) to be evaluated.
+        template : np.ndarray
+            The grayscale image array used as the template for matching.
+        confidence_threshold : float, optional
+            The minimum match value (0.0 to 1.0) required to consider it a
+            successful match. Default is 0.90.
+
+        Returns
+        -------
+        tuple[bool, float]
+            A tuple containing:
+            - A boolean indicating if the best match exceeds the confidence
+            threshold.
+            - A float representing the maximum confidence score found in the
+            frame.
+        """
+        gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGRA2GRAY)
+        result = cv2.matchTemplate(gray_frame, template, cv2.TM_CCOEFF_NORMED)
+        _, max_val, _, _ = cv2.minMaxLoc(result)
+
+        return max_val > confidence_threshold, max_val
+
+    def poll_for_template_match(
+        template: np.ndarray,
+        region: tuple[int, int, int, int],
+        log_context: str,
+        timeout: float = 5.0,
+        confidence_threshold: float = 0.90,
+    ) -> None:
+        """
+        Manages the camera polling loop to wait for a visual match.
+
+        Starts a background capture thread and continuously checks the
+        specified screen region. It delegates the actual visual evaluation to
+        `is_image_match`. The loop runs until a match exceeding the
+        confidence threshold is found or the timeout is reached.
+
+        Parameters
+        ----------
+        template : np.ndarray
+            A grayscale image array used as the template for OpenCV matching.
+        region : tuple[int, int, int, int]
+            The bounding box coordinates (left, top, right, bottom) of the
+            screen region to capture.
+        log_context : str
+            A descriptive string detailing what is being matched (e.g.,
+            "PS5 Home Screen" or "CFB Game Tile") to provide context in
+            the logs.
+        timeout : float, optional
+            The maximum time in seconds to wait for a successful match.
+            Default is 5.0.
+        confidence_threshold : float, optional
+            The minimum match value (0.0 to 1.0) required to register a
+            success. Default is 0.90.
+
+        Raises
+        ------
+        TimeoutError
+            If a match exceeding the confidence threshold is not found within
+            the timeout period.
+        """
+        logger.info(
+            f"Starting background capture thread: Polling for '{log_context}'..."
+        )
+        # Start a background camera thread to continuously capture frames.
+        camera.start(target_fps=10, region=region)
+        start_time = time.time()
+
+        # Use try-finally block to ensure the background camera thread is
+        # stopped even if an error occurs.
+        try:
+            while time.time() - start_time < timeout:
+                frame = camera.get_latest_frame()
+
+                if frame is not None and frame.max() > 0:
+                    is_match, confidence = _is_image_match(
+                        frame, template, confidence_threshold
+                    )
+
+                    if is_match:
+                        logger.success(
+                            f"Successfully matched '{log_context}'! (Confidence: {confidence:.2f})"
+                        )
+                        return
+
+                # Sync with the 10 FPS background camera thread to prevent
+                # redundant cv2 processing.
+                time.sleep(0.1)
+
+            logger.error(
+                f"Polling for '{log_context}' timed out after {timeout} seconds."
+            )
+            raise TimeoutError(f"Failed to match '{log_context}' within {timeout}s.")
+
+        finally:
+            camera.stop()
+
+    return (poll_for_template_match,)
+
+
+@app.cell
+def _(
+    Path,
+    Templates,
+    WINDOW_TITLE,
+    logger,
+    poll_for_template_match,
+    subprocess,
+    time,
+    win32gui,
+):
+    def _launch_chiaki_process() -> None:
+        """
+        Launches the chiaki-ng application subprocess.
+
+        Raises
+        ------
+        FileNotFoundError
+            If the chiaki-ng executable cannot be found at the specified path.
+        Exception
+            If the underlying subprocess fails to execute.
+        """
+        logger.info("Starting chiaki-ng launch sequence...")
+        chiaki_path = Path(r"C:\Program Files\chiaki-ng\chiaki.exe")
+
+        if not chiaki_path.exists():
+            logger.error(f"Executable not found at: {chiaki_path}")
+            raise FileNotFoundError(f"Could not find chiaki-ng at {chiaki_path}")
+
+        try:
+            subprocess.Popen([chiaki_path])
+            logger.debug(f"Executed subprocess: {chiaki_path}")
+        except Exception:
+            logger.exception("Failed to execute chiaki-ng subprocess.")
+            raise
+
+    def _find_and_focus_window(window_title: str, timeout: float = 30.0) -> int:
+        """
+        Finds and readies the `window_title` window.
+
+        Polls the OS for a specific window, waits for it to become visible,
+        and brings it to the foreground.
+
+        Parameters
+        ----------
+        window_title : str
+            The exact exact title of the window to search for.
+        timeout : float, optional
+            The maximum time in seconds to poll for the window. Default is
+            30.0.
+
+        Returns
+        -------
+        int
+            The window handle (HWND) of the found window.
+
+        Raises
+        ------
+        TimeoutError
+            If the window is not found or visible within the timeout period.
+        """
+        start_time = time.time()
+
+        logger.info(f"Polling OS for window '{window_title}' (Timeout: {timeout}s)...")
+
+        while time.time() - start_time < timeout:
+            hwnd = win32gui.FindWindow(None, window_title)
+
+            if hwnd and win32gui.IsWindowVisible(hwnd):
+                elapsed = round(time.time() - start_time, 2)
+                logger.success(
+                    f"Window '{window_title}' found and visible after {elapsed}s."
+                )
+
+                # Ensure the window is active and focused.
+                win32gui.SetForegroundWindow(hwnd)
+                return hwnd
+
+            # Pause briefly to prevent CPU thrashing while polling the OS for
+            # the window.
+            time.sleep(0.1)
+
+        logger.error(f"Window polling timed out after {timeout} seconds.")
+        raise TimeoutError(
+            f"Window '{window_title}' failed to launch within the timeout period."
+        )
+
+    def launch_ps5() -> None:
+        """
+        Executes the startup sequence to establish a remote play connection.
+
+        This function coordinates the initial pipeline steps: it launches the
+        chiaki-ng client, forces the application window to the foreground, and
+        polls the capture region until the PS5 home screen is verified. Upon
+        successful completion, the stream is active and ready for virtual
+        controller inputs.
+
+        Raises
+        ------
+        FileNotFoundError
+            If the chiaki-ng executable cannot be found during the launch
+            process.
+        TimeoutError
+            If the chiaki-ng window fails to appear, or if the PS5 settings
+            icon is not detected on the screen within the 45.0 second polling
+            timeout.
+        Exception
+            If the underlying subprocess fails to execute chiaki-ng.
+        """
+        _launch_chiaki_process()
+        _find_and_focus_window(window_title=WINDOW_TITLE)
+        # Look for the PS5 settings icon to be present. This indicates the
+        # connection is ready to start accepting controller inputs.
+        poll_for_template_match(
+            template=Templates.PS5_SETTINGS_ICON.template,
+            region=Templates.PS5_SETTINGS_ICON.region,
+            log_context=Templates.PS5_SETTINGS_ICON.log_context,
+            timeout=45.0,
+        )
+
+    return (launch_ps5,)
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ### Convert Image Templates to Grayscale
+    """)
+    return
+
+
+@app.cell
+def _(Path, cv2, logger):
+    def convert_template_image_to_grayscale(template_path: Path) -> None:
+        """
+        Reads an image and overwrites it as a 1-channel grayscale image.
+
+        This function takes a specific file path, reads the image using
+        OpenCV's grayscale flag, automatically converts it to grayscale, and
+        then overwrites the original file on disk with the new single channel
+        data.
+
+        Parameters
+        ----------
+        template_path : pathlib.Path
+            The full file path to the specific template image to be converted.
+        """
+        if not template_path.exists() or not template_path.is_file():
+            logger.error(f"File not found: {template_path}")
+            return
+
+        logger.info(f"Converting '{template_path.name}' to grayscale...")
+        gray_template = cv2.imread(template_path, cv2.IMREAD_GRAYSCALE)
+
+        # Ensure the image loaded successfully to prevent overwriting with a
+        # corrupted file.
+        if gray_template is not None:
+            # Overwrite the original file with the 1-channel grayscale image.
+            cv2.imwrite(template_path, gray_template)
+            logger.success(
+                f"Successfully converted and overwritten: {template_path.name}"
+            )
+        else:
+            logger.error(f"Failed to read or convert: {template_path.name}")
+
+    return
 
 
 @app.cell(hide_code=True)
@@ -798,51 +958,6 @@ def _(Image, camera, cv2, mo, time):
     #     600,
     # )
     # preview_capture(region=_test_region)
-    return
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    ### Convert Image Templates to Grayscale
-    """)
-    return
-
-
-@app.cell
-def _(Path, cv2, logger):
-    def convert_template_image_to_grayscale(template_path: Path) -> None:
-        """
-        Reads an image and overwrites it as a 1-channel grayscale image.
-
-        This function takes a specific file path, reads the image using
-        OpenCV's grayscale flag, automatically converts it to grayscale, and
-        then overwrites the original file on disk with the new single channel
-        data.
-
-        Parameters
-        ----------
-        template_path : pathlib.Path
-            The full file path to the specific template image to be converted.
-        """
-        if not template_path.exists() or not template_path.is_file():
-            logger.error(f"File not found: {template_path}")
-            return
-
-        logger.info(f"Converting '{template_path.name}' to grayscale...")
-        gray_template = cv2.imread(template_path, cv2.IMREAD_GRAYSCALE)
-
-        # Ensure the image loaded successfully to prevent overwriting with a
-        # corrupted file.
-        if gray_template is not None:
-            # Overwrite the original file with the 1-channel grayscale image.
-            cv2.imwrite(template_path, gray_template)
-            logger.success(
-                f"Successfully converted and overwritten: {template_path.name}"
-            )
-        else:
-            logger.error(f"Failed to read or convert: {template_path.name}")
-
     return
 
 
