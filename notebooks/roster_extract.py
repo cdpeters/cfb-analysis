@@ -4,73 +4,6 @@ __generated_with = "0.23.16"
 app = marimo.App()
 
 
-@app.cell
-def _(
-    Buttons,
-    Templates,
-    controller,
-    logger,
-    poll_for_template_match,
-    shutdown_pipeline_resources,
-    time,
-):
-    def is_stream_active() -> bool:
-        """
-        Forces the PS5 home screen and checks if the video stream is live.
-
-        Returns
-        -------
-        bool
-            True if the PS5 settings icon is successfully matched within the
-            timeout, or False if a TimeoutError is caught.
-        """
-        controller.tap_special(special_button=Buttons.PS, hold_time=1.2, rest_time=2.0)
-        try:
-            poll_for_template_match(
-                template=Templates.PS5_SETTINGS_ICON.template,
-                region=Templates.PS5_SETTINGS_ICON.region,
-                log_context="Verify Stream Active",
-                timeout=5.0,
-            )
-            return True
-        except TimeoutError:
-            return False
-
-    def close_active_game() -> None:
-        """Executes the button sequence to close an active game from the home screen."""
-        controller.tap_button(button=Buttons.OPTIONS, rest_time=0.5)
-        controller.tap_button(button=Buttons.CROSS, rest_time=2.0)
-
-    def execute_retry_delay(attempt: int, max_attempts: int) -> bool:
-        """
-        Shuts down resources and waits for the PS5 to enter rest mode.
-
-        Parameters
-        ----------
-        attempt : int
-            The current attempt index (0-indexed).
-        max_attempts : int
-            The maximum number of retry attempts allowed before aborting.
-
-        Returns
-        -------
-        bool
-            True if the pipeline should retry the launch sequence, or False if
-            the maximum connection attempts have been reached.
-        """
-        shutdown_pipeline_resources()
-        if attempt < max_attempts - 1:
-            logger.info("Waiting for PS5 to fully enter rest mode...")
-            time.sleep(30.0)
-            logger.info("Retrying PS5 launch sequence...")
-            return True
-        else:
-            logger.error("Max connection attempts reached. Aborting pipeline.")
-            return False
-
-    return close_active_game, execute_retry_delay, is_stream_active
-
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -81,8 +14,9 @@ def _(mo):
 
 @app.cell
 def _(
-    Buttons,
+    Button,
     ChiakiWindowNotFoundError,
+    LAUNCH_MAX_ATTEMPTS,
     PS5SettingsIconNotFoundError,
     Templates,
     close_active_game,
@@ -95,14 +29,12 @@ def _(
     shutdown_pipeline_resources,
     time,
 ):
-    max_attempts = 2
-
     try:
-        for attempt in range(max_attempts):
+        for attempt in range(LAUNCH_MAX_ATTEMPTS):
             try:
                 launch_ps5(target_config=Templates.PS5_SETTINGS_ICON)
                 logger.info("Moving from welcome tile to the first game tile...")
-                controller.tap_dpad(Buttons.DPAD_RIGHT)
+                controller.tap(Button.DPAD_RIGHT)
                 launch_cfb_game(target_config=Templates.CFB_GAME_TILE)
                 # Simulate pipeline work and then completion with a delay.
                 time.sleep(15)
@@ -132,7 +64,7 @@ def _(
                     logger.error(
                         f"Stream is unresponsive (connection failed on attempt {attempt + 1})."
                     )
-                    if execute_retry_delay(attempt, max_attempts):
+                    if execute_retry_delay(attempt, LAUNCH_MAX_ATTEMPTS):
                         continue
                     break
 
@@ -141,6 +73,11 @@ def _(
                     "Local chiaki-ng window failed to launch. Aborting pipeline."
                 )
                 break
+
+    except Exception:
+        # Catch-all for unforeseen errors to ensure they hit the log file
+        # before the pipeline teardown wipes the state.
+        logger.exception("An unforeseen error crashed the main launch sequence.")
 
     finally:
         logger.info("Executing final pipeline teardown...")
@@ -193,8 +130,7 @@ def _():
     import subprocess
     import sys
     import time
-    from collections.abc import Callable
-    from enum import IntEnum
+    from enum import Enum, auto
     from pathlib import Path
     from typing import NamedTuple
 
@@ -281,11 +217,11 @@ def _():
     import win32gui
 
     return (
-        Callable,
+        Enum,
         Image,
-        IntEnum,
         NamedTuple,
         Path,
+        auto,
         cv2,
         dxcam,
         logger,
@@ -309,10 +245,13 @@ def _(mo):
 
 
 @app.cell
-def _(IntEnum, NamedTuple, Path, cv2, dxcam, np, vg):
-    WINDOW_TITLE = "chiaki-ng"
-    camera = dxcam.create(device_idx=0, output_idx=0, output_color="BGRA")  # ty: ignore
-    _PROJECT_DIR = Path.cwd().parent
+def _(Enum, NamedTuple, Path, auto, cv2, dxcam, np, vg):
+    LAUNCH_MAX_ATTEMPTS = 2
+    WINDOW_TITLE: str = "chiaki-ng"
+    camera: dxcam.DXCamera = dxcam.create(  # ty: ignore
+        device_idx=0, output_idx=0, output_color="BGRA"
+    )
+    _PROJECT_DIR: Path = Path.cwd().parent
 
     class _TemplatePaths:
         """
@@ -320,17 +259,17 @@ def _(IntEnum, NamedTuple, Path, cv2, dxcam, np, vg):
 
         Attributes
         ----------
-        BASE_DIR : pathlib.Path
+        BASE_DIR : Path
             The root directory containing the template image assets.
-        PS5_SETTINGS_ICON : pathlib.Path
+        PS5_SETTINGS_ICON : Path
             The file path to the PS5 home screen settings icon template.
-        CFB_GAME_TILE : pathlib.Path
+        CFB_GAME_TILE : Path
             The file path to the College Football game tile template.
         """
 
         BASE_DIR: Path = _PROJECT_DIR / "assets" / "templates"
-        PS5_SETTINGS_ICON = BASE_DIR / "ps5_settings_icon.png"
-        CFB_GAME_TILE = BASE_DIR / "cfb_game_tile.png"
+        PS5_SETTINGS_ICON: Path = BASE_DIR / "ps5_settings_icon.png"
+        CFB_GAME_TILE: Path = BASE_DIR / "cfb_game_tile.png"
 
     class _TemplateConfig(NamedTuple):
         """
@@ -369,81 +308,104 @@ def _(IntEnum, NamedTuple, Path, cv2, dxcam, np, vg):
             Configuration for detecting the College Football game tile.
         """
 
-        PS5_SETTINGS_ICON = _TemplateConfig(
+        PS5_SETTINGS_ICON: _TemplateConfig = _TemplateConfig(
             template=cv2.imread(_TemplatePaths.PS5_SETTINGS_ICON, cv2.IMREAD_GRAYSCALE),  # ty: ignore
             region=(1430, 20, 1520, 105),
             log_context="PS5 Home Screen",
         )
-        CFB_GAME_TILE = _TemplateConfig(
+        CFB_GAME_TILE: _TemplateConfig = _TemplateConfig(
             template=cv2.imread(_TemplatePaths.CFB_GAME_TILE, cv2.IMREAD_GRAYSCALE),  # ty: ignore
             region=(100, 140, 600, 600),
             log_context="CFB Game Tile Search",
         )
 
-    class Buttons(IntEnum):
+    class InputType(Enum):
         """
-        Mappings for virtual DualShock 4 (DS4) controller inputs.
+        Categorizes the types of virtual controller inputs.
 
-        This enumeration maps simplified, readable button names to the
-        underlying integer bitmasks and constants required by the `vgamepad`
-        library.
+        This enumeration ensures that each button press is routed to the
+        correct underlying `vgamepad` method, as standard buttons, D-Pad
+        directions, and special buttons require different API calls.
 
         Attributes
         ----------
-        DPAD_UP : int
-            The bitmask for the D-Pad North (Up) direction.
-        DPAD_DOWN : int
-            The bitmask for the D-Pad South (Down) direction.
-        DPAD_LEFT : int
-            The bitmask for the D-Pad West (Left) direction.
-        DPAD_RIGHT : int
-            The bitmask for the D-Pad East (Right) direction.
-        DPAD_NEUTRAL : int
-            The value representing a released or neutral D-Pad state.
-        SQUARE : int
-            The bitmask for the Square face button.
-        TRIANGLE : int
-            The bitmask for the Triangle face button.
-        CROSS : int
-            The bitmask for the Cross (X) face button.
-        CIRCLE : int
-            The bitmask for the Circle face button.
-        L1 : int
-            The bitmask for the L1 button.
-        R1 : int
-            The bitmask for the R1 button.
-        L2 : int
-            The bitmask for the L2 button.
-        R2 : int
-            The bitmask for the R2 button.
-        PS : int
-            The bitmask for the PlayStation (PS) special menu button.
-        OPTIONS : int
-            The bitmask for the Options menu button.
+        STANDARD : InputType
+            Represents standard face buttons, options button, bumpers, and
+            triggers.
+        DPAD : InputType
+            Represents directional pad inputs.
+        SPECIAL : InputType
+            Represents special buttons, such as the PlayStation button.
+        """
+
+        DPAD = auto()
+        SPECIAL = auto()
+        STANDARD = auto()
+
+    class Button(Enum):
+        """
+        Mappings for virtual DualShock 4 (DS4) controller inputs.
+
+        This enumeration maps readable button names to their corresponding
+        input categories and vgamepad bitmasks. The `.value` property of each
+        member returns a `tuple[InputType, int]`.
+
+        Attributes
+        ----------
+        DPAD_UP : Button
+            The D-Pad North (Up) direction.
+        DPAD_DOWN : Button
+            The D-Pad South (Down) direction.
+        DPAD_LEFT : Button
+            The D-Pad West (Left) direction.
+        DPAD_RIGHT : Button
+            The D-Pad East (Right) direction.
+        DPAD_NEUTRAL : Button
+            The state representing a released or neutral D-Pad.
+        SQUARE : Button
+            The Square face button.
+        TRIANGLE : Button
+            The Triangle face button.
+        CROSS : Button
+            The Cross (X) face button.
+        CIRCLE : Button
+            The Circle face button.
+        L1 : Button
+            The L1 bumper button.
+        R1 : Button
+            The R1 bumper button.
+        L2 : Button
+            The L2 trigger button.
+        R2 : Button
+            The R2 trigger button.
+        PS : Button
+            The PlayStation (PS) special menu button.
+        OPTIONS : Button
+            The Options menu button.
         """
 
         # D-Pad Directions.
-        DPAD_UP = vg.DS4_DPAD_DIRECTIONS.DS4_BUTTON_DPAD_NORTH
-        DPAD_DOWN = vg.DS4_DPAD_DIRECTIONS.DS4_BUTTON_DPAD_SOUTH
-        DPAD_LEFT = vg.DS4_DPAD_DIRECTIONS.DS4_BUTTON_DPAD_WEST
-        DPAD_RIGHT = vg.DS4_DPAD_DIRECTIONS.DS4_BUTTON_DPAD_EAST
-        DPAD_NEUTRAL = vg.DS4_DPAD_DIRECTIONS.DS4_BUTTON_DPAD_NONE
+        DPAD_UP = (InputType.DPAD, vg.DS4_DPAD_DIRECTIONS.DS4_BUTTON_DPAD_NORTH)
+        DPAD_DOWN = (InputType.DPAD, vg.DS4_DPAD_DIRECTIONS.DS4_BUTTON_DPAD_SOUTH)
+        DPAD_LEFT = (InputType.DPAD, vg.DS4_DPAD_DIRECTIONS.DS4_BUTTON_DPAD_WEST)
+        DPAD_RIGHT = (InputType.DPAD, vg.DS4_DPAD_DIRECTIONS.DS4_BUTTON_DPAD_EAST)
+        DPAD_NEUTRAL = (InputType.DPAD, vg.DS4_DPAD_DIRECTIONS.DS4_BUTTON_DPAD_NONE)
 
         # Face Buttons.
-        SQUARE = vg.DS4_BUTTONS.DS4_BUTTON_SQUARE
-        TRIANGLE = vg.DS4_BUTTONS.DS4_BUTTON_TRIANGLE
-        CROSS = vg.DS4_BUTTONS.DS4_BUTTON_CROSS
-        CIRCLE = vg.DS4_BUTTONS.DS4_BUTTON_CIRCLE
+        SQUARE = (InputType.STANDARD, vg.DS4_BUTTONS.DS4_BUTTON_SQUARE)
+        TRIANGLE = (InputType.STANDARD, vg.DS4_BUTTONS.DS4_BUTTON_TRIANGLE)
+        CROSS = (InputType.STANDARD, vg.DS4_BUTTONS.DS4_BUTTON_CROSS)
+        CIRCLE = (InputType.STANDARD, vg.DS4_BUTTONS.DS4_BUTTON_CIRCLE)
 
         # Bumpers and Triggers.
-        L1 = vg.DS4_BUTTONS.DS4_BUTTON_SHOULDER_LEFT
-        R1 = vg.DS4_BUTTONS.DS4_BUTTON_SHOULDER_RIGHT
-        L2 = vg.DS4_BUTTONS.DS4_BUTTON_TRIGGER_LEFT
-        R2 = vg.DS4_BUTTONS.DS4_BUTTON_TRIGGER_RIGHT
+        L1 = (InputType.STANDARD, vg.DS4_BUTTONS.DS4_BUTTON_SHOULDER_LEFT)
+        R1 = (InputType.STANDARD, vg.DS4_BUTTONS.DS4_BUTTON_SHOULDER_RIGHT)
+        L2 = (InputType.STANDARD, vg.DS4_BUTTONS.DS4_BUTTON_TRIGGER_LEFT)
+        R2 = (InputType.STANDARD, vg.DS4_BUTTONS.DS4_BUTTON_TRIGGER_RIGHT)
 
         # Menu Buttons.
-        PS = vg.DS4_SPECIAL_BUTTONS.DS4_SPECIAL_BUTTON_PS
-        OPTIONS = vg.DS4_BUTTONS.DS4_BUTTON_OPTIONS
+        PS = (InputType.SPECIAL, vg.DS4_SPECIAL_BUTTONS.DS4_SPECIAL_BUTTON_PS)
+        OPTIONS = (InputType.STANDARD, vg.DS4_BUTTONS.DS4_BUTTON_OPTIONS)
 
     class ChiakiWindowNotFoundError(Exception):
         """Raised when the local chiaki-ng window fails to appear or become visible."""
@@ -455,9 +417,11 @@ def _(IntEnum, NamedTuple, Path, cv2, dxcam, np, vg):
         """Raised when the CFB game tile is not found on the PS5 home screen."""
 
     return (
-        Buttons,
+        Button,
         CFBGameTileNotFoundError,
         ChiakiWindowNotFoundError,
+        InputType,
+        LAUNCH_MAX_ATTEMPTS,
         PS5SettingsIconNotFoundError,
         Templates,
         WINDOW_TITLE,
@@ -475,7 +439,7 @@ def _(mo):
 
 
 @app.cell
-def _(Buttons, Callable, logger, time, vg):
+def _(Button, InputType, logger, time, vg):
     class VirtualController:
         """
         A wrapper class to manage controller emulation and input sequences.
@@ -487,168 +451,125 @@ def _(Buttons, Callable, logger, time, vg):
 
         Attributes
         ----------
+        DEFAULT_TAP_TIME : float
+            The standard duration in seconds for a button tap.
+        DEFAULT_HOLD_TIME : float
+            The standard duration in seconds for a button hold.
+        DEFAULT_REST_TIME : float
+            The standard duration in seconds to wait after an input is
+            released, allowing the corresponding UI animation to finish.
         gamepad : vg.VDS4Gamepad
             The underlying virtual gamepad instance used to send inputs to the
             OS.
-        default_hold : float
-            The standard duration in seconds to hold an input if a specific
-            time is not provided.
-        default_rest : float
-            The standard duration in seconds to wait after an input if a
-            specific time is not provided.
         """
 
-        def __init__(
-            self, default_hold: float = 0.1, default_rest: float = 0.3
-        ) -> None:
-            """
-            Initializes the virtual gamepad and default timing parameters.
+        DEFAULT_TAP_TIME: float = 0.1
+        DEFAULT_HOLD_TIME: float = 1.2
+        DEFAULT_REST_TIME: float = 0.3
 
-            Parameters
-            ----------
-            default_hold : float, optional
-                The base duration in seconds to hold a button. Default is 0.1.
-            default_rest : float, optional
-                The base duration in seconds to wait after releasing a button.
-                Default is 0.3.
+        def __init__(self) -> None:
             """
-            self.gamepad = vg.VDS4Gamepad()
-            self.default_hold = default_hold
-            self.default_rest = default_rest
+            Initializes the virtual gamepad.
+            """
+            self.gamepad: vg.VDS4Gamepad = vg.VDS4Gamepad()
+
+            # Allow the OS time to mount the virtual controller before sending
+            # inputs.
             time.sleep(1.0)
 
-        def _execute_tap_sequence(
+        def _execute_action(
             self,
-            press_action: Callable[[], None],
-            release_action: Callable[[], None],
-            hold_time: float | None = None,
-            rest_time: float | None = None,
+            button: Button,
+            action_time: float,
+            rest_time: float,
         ) -> None:
             """
             Executes the central sequence of pressing, updating, and releasing.
 
             This engine standardizes the required delays between sending a
-            state change to the virtual controller and resetting it.
+            state change to the virtual controller and resetting it, routing
+            the input to the correct vgamepad method based on the input type.
 
             Parameters
             ----------
-            press_action : Callable[[], None]
-                A parameterless function that triggers the button press state.
-            release_action : Callable[[], None]
-                A parameterless function that triggers the button release
-                state.
-            hold_time : float, optional
+            button : Button
+                The specific Button enum member to be pressed and released.
+            action_time : float
                 The duration in seconds to wait while the button is pressed.
-                Falls back to `default_hold` if None.
-            rest_time : float, optional
+            rest_time : float
                 The duration in seconds to wait after the button is released.
-                Falls back to `default_rest` if None.
             """
-            actual_hold = hold_time if hold_time is not None else self.default_hold
-            actual_rest = rest_time if rest_time is not None else self.default_rest
+            input_type, button_val = button.value
 
-            press_action()
+            # Press button.
+            if input_type == InputType.STANDARD:
+                self.gamepad.press_button(button=button_val)
+            elif input_type == InputType.SPECIAL:
+                self.gamepad.press_special_button(special_button=button_val)
+            elif input_type == InputType.DPAD:
+                self.gamepad.directional_pad(direction=button_val)
+
             self.gamepad.update()
-            time.sleep(actual_hold)
+            time.sleep(action_time)
 
-            release_action()
+            # Release button.
+            if input_type == InputType.STANDARD:
+                self.gamepad.release_button(button=button_val)
+            elif input_type == InputType.SPECIAL:
+                self.gamepad.release_special_button(special_button=button_val)
+            elif input_type == InputType.DPAD:
+                neutral_val = Button.DPAD_NEUTRAL.value[1]
+                self.gamepad.directional_pad(direction=neutral_val)
+
             self.gamepad.update()
-            time.sleep(actual_rest)
+            time.sleep(rest_time)
 
-        def tap_button(
+        def tap(
             self,
-            button: int,
-            hold_time: float | None = None,
+            button: Button,
+            /,
+            *,
             rest_time: float | None = None,
         ) -> None:
             """
-            Simulates pressing and releasing a standard DS4 face button.
+            A quick press and release of a controller button.
 
             Parameters
             ----------
-            button : int
-                The integer bitmask representing the specific face button to
-                press (e.g., Cross, Circle, Options).
-            hold_time : float, optional
-                The duration in seconds to hold the button down. Default is
-                self.default_hold.
+            button : Button
+                The specific button to tap.
             rest_time : float, optional
                 The duration in seconds to wait after releasing the button.
-                Default is self.default_rest.
+                Falls back to `DEFAULT_REST_TIME` if None.
             """
-            self._execute_tap_sequence(
-                press_action=lambda: self.gamepad.press_button(button=button),
-                release_action=lambda: self.gamepad.release_button(button=button),
-                hold_time=hold_time,
-                rest_time=rest_time,
+            actual_rest = rest_time if rest_time is not None else self.DEFAULT_REST_TIME
+
+            self._execute_action(
+                button=button, action_time=self.DEFAULT_TAP_TIME, rest_time=actual_rest
             )
 
-        def tap_dpad(
+        def hold(
             self,
-            direction: int,
-            hold_time: float | None = None,
+            button: Button,
+            /,
+            *,
             rest_time: float | None = None,
         ) -> None:
             """
-            Simulates pressing and releasing a DS4 D-Pad direction.
-
-            Unlike standard buttons, the D-Pad requires resetting to a specific
-            neutral state rather than just a general release function.
+            A prolonged press and release of a controller button.
 
             Parameters
             ----------
-            direction : int
-                The integer value representing the specific D-Pad direction to
-                press (e.g., North, South, East, West).
-            hold_time : float, optional
-                The duration in seconds to hold the direction down. Default is
-                self.default_hold.
-            rest_time : float, optional
-                The duration in seconds to wait after resetting to neutral.
-                Default is self.default_rest.
-            """
-            self._execute_tap_sequence(
-                press_action=lambda: self.gamepad.directional_pad(direction=direction),
-                release_action=lambda: self.gamepad.directional_pad(
-                    direction=Buttons.DPAD_NEUTRAL
-                ),
-                hold_time=hold_time,
-                rest_time=rest_time,
-            )
-
-        def tap_special(
-            self,
-            special_button: int,
-            hold_time: float | None = None,
-            rest_time: float | None = None,
-        ) -> None:
-            """
-            Simulates pressing and releasing a DS4 special button.
-
-            Special buttons include inputs like the PlayStation (PS) button or
-            the Touchpad click.
-
-            Parameters
-            ----------
-            special_button : int
-                The integer value representing the specific special button to
-                press.
-            hold_time : float, optional
-                The duration in seconds to hold the button down. Default is
-                self.default_hold.
+            button : Button
+                The specific button to hold.
             rest_time : float, optional
                 The duration in seconds to wait after releasing the button.
-                Default is self.default_rest.
+                Falls back to `DEFAULT_REST_TIME` if None.
             """
-            self._execute_tap_sequence(
-                press_action=lambda: self.gamepad.press_special_button(
-                    special_button=special_button
-                ),
-                release_action=lambda: self.gamepad.release_special_button(
-                    special_button=special_button
-                ),
-                hold_time=hold_time,
-                rest_time=rest_time,
+            actual_rest = rest_time if rest_time is not None else self.DEFAULT_REST_TIME
+
+            self._execute_action(
+                button=button, action_time=self.DEFAULT_HOLD_TIME, rest_time=actual_rest
             )
 
     logger.info("Initializing DS4 gamepad emulation...")
@@ -667,7 +588,7 @@ def _(mo):
 
 
 @app.cell
-def _(camera, cv2, logger, np, time):
+def _(camera: "dxcam.DXCamera", cv2, logger, np, time):
     def _is_image_match(
         frame: np.ndarray, template: np.ndarray, confidence_threshold: float = 0.90
     ) -> tuple[bool, float]:
@@ -784,6 +705,84 @@ def _(camera, cv2, logger, np, time):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
+    ### Miscellaneous Main Launch Sequence Functions
+    #### `is_stream_active`
+    #### `close_active_game`
+    #### `execute_retry_delay`
+    """)
+    return
+
+
+@app.cell
+def _(
+    Button,
+    Templates,
+    controller,
+    logger,
+    poll_for_template_match,
+    shutdown_pipeline_resources,
+    time,
+):
+    def is_stream_active() -> bool:
+        """
+        Forces the PS5 home screen and checks if the video stream is live.
+
+        Returns
+        -------
+        bool
+            True if the PS5 settings icon is successfully matched within the
+            timeout, or False if a TimeoutError is caught.
+        """
+        controller.hold(Button.PS, rest_time=2.0)
+        try:
+            poll_for_template_match(
+                template=Templates.PS5_SETTINGS_ICON.template,
+                region=Templates.PS5_SETTINGS_ICON.region,
+                log_context="Verify Stream Active",
+                timeout=5.0,
+            )
+            return True
+        except TimeoutError:
+            return False
+
+    def close_active_game() -> None:
+        """Executes the button sequence to close an active game from the home screen."""
+        controller.tap(Button.OPTIONS, rest_time=0.5)
+        controller.tap(Button.CROSS, rest_time=2.0)
+
+    def execute_retry_delay(attempt: int, max_attempts: int) -> bool:
+        """
+        Shuts down resources and waits for the PS5 to enter rest mode.
+
+        Parameters
+        ----------
+        attempt : int
+            The current attempt index (0-indexed).
+        max_attempts : int
+            The maximum number of retry attempts allowed before aborting.
+
+        Returns
+        -------
+        bool
+            True if the pipeline should retry the launch sequence, or False if
+            the maximum connection attempts have been reached.
+        """
+        shutdown_pipeline_resources()
+        if attempt < max_attempts - 1:
+            logger.info("Waiting for PS5 to fully enter rest mode...")
+            time.sleep(30.0)
+            logger.info("Retrying PS5 launch sequence...")
+            return True
+        else:
+            logger.error("Max connection attempts reached. Aborting pipeline.")
+            return False
+
+    return close_active_game, execute_retry_delay, is_stream_active
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
     ### Launch PS5 Functions
     #### `_launch_chiaki_process`
     #### `_find_and_focus_window`
@@ -798,7 +797,7 @@ def _(
     ChiakiWindowNotFoundError,
     PS5SettingsIconNotFoundError,
     Path,
-    WINDOW_TITLE,
+    WINDOW_TITLE: str,
     logger,
     poll_for_template_match,
     subprocess,
@@ -883,7 +882,7 @@ def _(
             f"Window '{window_title}' failed to launch within the timeout period."
         )
 
-    def ensure_fullscreen(hwnd: int, max_attempts: int = 3) -> None:
+    def _ensure_fullscreen(hwnd: int, max_attempts: int = 3) -> None:
         """
         Verifies the window is in true full screen and attempts to correct it
         if not.
@@ -1015,7 +1014,7 @@ def _(mo):
 
 @app.cell
 def _(
-    Buttons,
+    Button,
     CFBGameTileNotFoundError,
     controller,
     logger,
@@ -1048,14 +1047,14 @@ def _(
         for attempt in range(max_attempts):
             logger.info(f"Evaluating game tile {attempt + 1}...")
             # Bring up the options for the current game tile's game.
-            controller.tap_button(Buttons.OPTIONS, rest_time=0.5)
+            controller.tap(Button.OPTIONS, rest_time=0.5)
 
             # D-Pad down x5 to get to the "Information" option.
             for _ in range(5):
-                controller.tap_dpad(Buttons.DPAD_DOWN, rest_time=0.15)
+                controller.tap(Button.DPAD_DOWN, rest_time=0.15)
 
             # Cross to select the "Information" option.
-            controller.tap_button(Buttons.CROSS, rest_time=1.5)
+            controller.tap(Button.CROSS, rest_time=1.5)
 
             # Look for a match with the CFB game tile template.
             try:
@@ -1067,15 +1066,15 @@ def _(
                 )
             except TimeoutError:
                 # Circle to back out of "Information" screen.
-                controller.tap_button(Buttons.CIRCLE, rest_time=1.0)
+                controller.tap(Button.CIRCLE, rest_time=1.0)
                 logger.info("Target game not found. Shifting to next tile...")
-                controller.tap_dpad(Buttons.DPAD_RIGHT)
+                controller.tap(Button.DPAD_RIGHT)
                 continue
 
             # Circle to back out of "Information" screen.
-            controller.tap_button(Buttons.CIRCLE, rest_time=1.0)
+            controller.tap(Button.CIRCLE, rest_time=1.0)
             logger.success("Target game located. Launching...")
-            controller.tap_button(Buttons.CROSS)
+            controller.tap(Button.CROSS)
             return
 
         logger.error(f"Failed to locate the game after {max_attempts} tiles.")
@@ -1097,7 +1096,7 @@ def _(mo):
 
 
 @app.cell
-def _(camera, controller, logger, subprocess, time):
+def _(camera: "dxcam.DXCamera", controller, logger, subprocess, time):
     def _shutdown_chiaki_process() -> None:
         """
         Terminates the chiaki-ng application, prioritizing a graceful shutdown.
@@ -1235,7 +1234,7 @@ def _(mo):
 
 
 @app.cell
-def _(Image, camera, cv2, mo, time):
+def _(Image, camera: "dxcam.DXCamera", cv2, mo, time):
     def preview_capture(
         region: tuple[int, int, int, int], timeout: float = 3.0
     ) -> mo.Html:
