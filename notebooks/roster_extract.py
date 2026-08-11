@@ -9,19 +9,17 @@ def _(mo):
     mo.md(r"""
     ### Main Launch Sequence
     """)
-    return
 
 
 @app.cell
 def _(
     Button,
     ChiakiWindowNotFoundError,
-    LAUNCH_MAX_ATTEMPTS,
+    LAUNCH_MAX_ATTEMPTS: int,
     PS5SettingsIconNotFoundError,
     Templates,
     close_active_game,
     controller,
-    execute_retry_delay,
     is_stream_active,
     launch_cfb_game,
     launch_ps5,
@@ -37,12 +35,11 @@ def _(
                 controller.tap(Button.DPAD_RIGHT)
                 launch_cfb_game(target_config=Templates.CFB_GAME_TILE)
                 # Simulate pipeline work and then completion with a delay.
+                logger.success("Main launch sequence completed successfully!")
                 time.sleep(15)
                 # launch_dynasty()
                 # navigate_to_rosters()
-
-                logger.success("Main launch sequence completed successfully!")
-                break  # Triggers the finally block, then exits
+                break
 
             except PS5SettingsIconNotFoundError:
                 logger.info(
@@ -55,18 +52,28 @@ def _(
                     )
                     close_active_game()
                     launch_cfb_game(target_config=Templates.CFB_GAME_TILE)
+                    logger.success("Recovery sequence completed successfully!")
                     # Simulate pipeline work and then completion with a delay.
                     time.sleep(15)
-                    logger.success("Recovery sequence completed successfully!")
                     break
 
                 else:
                     logger.error(
                         f"Stream is unresponsive (connection failed on attempt {attempt + 1})."
                     )
-                    if execute_retry_delay(attempt, LAUNCH_MAX_ATTEMPTS):
+
+                    if attempt + 1 < LAUNCH_MAX_ATTEMPTS:
+                        logger.info(
+                            "Shutting down pipeline and waiting for PS5 to fully enter rest mode before retrying..."
+                        )
+                        shutdown_pipeline_resources()
+                        time.sleep(30.0)
                         continue
-                    break
+                    else:
+                        logger.error(
+                            "Max connection attempts reached. Aborting pipeline."
+                        )
+                        break
 
             except ChiakiWindowNotFoundError:
                 logger.error(
@@ -82,7 +89,6 @@ def _(
     finally:
         logger.info("Executing final pipeline teardown...")
         shutdown_pipeline_resources()
-    return
 
 
 @app.cell(hide_code=True)
@@ -110,7 +116,6 @@ def _(mo):
     - [x] retry the PS5 launch sequence.
     - [x] Add `max_attempts` for the retry logic and default it to 1. Possibly change it to 2 if hanging a second time is common.
     """)
-    return
 
 
 @app.cell(hide_code=True)
@@ -120,7 +125,6 @@ def _(mo):
     ## Appendix
     ### Imports, Logging Configuration, and Dots Per Inch (DPI) Awareness
     """)
-    return
 
 
 @app.cell
@@ -143,24 +147,86 @@ def _():
     # ======================
     # Logging Configuration
     # ======================
-    logger.remove()
+    def _configure_logging(
+        log_dir: str = "logs",
+        console_level: str = "DEBUG",
+        file_level: str = "DEBUG",
+        rotation: str = "10 MB",
+        retention: str = "7 days",
+    ) -> None:
+        """
+        Configures global Loguru logging sinks and phase-based file routing.
 
-    _log_format = (
-        "<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | "
-        "<level>{level: <8}</level> | "
-        "<cyan>{function}</cyan>:<cyan>{line}</cyan> - "
-        "<level>{message}</level>"
-    )
-    _notebook_log_level = "DEBUG"
-    _file_log_level = "DEBUG"
+        This function removes default handlers and establishes a centralized
+        logging architecture. It routes all logs to the console and sets up
+        specific file sinks to separate logs based on the 'phase' bound to the
+        logger (e.g., 'launch', 'extraction', 'analysis'). If no phase is
+        bound, it falls back to a default 'global' value for formatting.
 
-    logger.add(sys.stdout, format=_log_format, level=_notebook_log_level, colorize=True)
-    logger.add(
-        "logs/cfb_pipeline_{time:YYYY-MM-DD}.log",
-        rotation="10 MB",
-        retention="7 days",
-        level=_file_log_level,
-    )
+        Parameters
+        ----------
+        log_dir : str, optional
+            The base directory where log files will be saved. Default is
+            "logs".
+        console_level : str, optional
+            The minimum log level to display in the standard output (console).
+            Default is "DEBUG".
+        file_level : str, optional
+            The minimum log level to write to the file sinks. Default is
+            "DEBUG".
+        rotation : str, optional
+            The condition for rotating log files (e.g., file size threshold).
+            Default is "10 MB".
+        retention : str, optional
+            The duration to keep rotated log files before automatic deletion.
+            Default is "7 days".
+        """
+        # Create 'logs' directory.
+        _log_path = Path(log_dir)
+        _log_path.mkdir(parents=True, exist_ok=True)
+
+        # Reset Loguru's default state.
+        logger.remove()
+
+        _log_format = (
+            "<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | "
+            "<level>{level: <8}</level> | "
+            # "<magenta>{extra[phase]}</magenta> | "
+            "<cyan>{function}</cyan>:<cyan>{line}</cyan> - "
+            "<level>{message}</level>"
+        )
+
+        # Inject a default phase so {extra[phase]} never throws a KeyError.
+        # logger.configure(extra={"phase": "global"})
+
+        # Standard console output
+        logger.add(sys.stdout, format=_log_format, level=console_level, colorize=True)
+
+        logger.add(
+            "logs/cfb_pipeline_{time:YYYY-MM-DD}.log",
+            rotation=rotation,
+            retention=retention,
+            level=file_level,
+        )
+
+        # Phase-specific file routing with lambda filters.
+        # logger.add(
+        #     log_path / "cfb_launch_{time:YYYY-MM-DD}.log",
+        #     format=_log_format,
+        #     filter=lambda record: record["extra"].get("phase") == "launch",
+        #     level=file_level,
+        #     rotation=rotation,
+        #     retention=retention,
+        # )
+
+        # logger.add(
+        #     log_path / "cfb_extraction_{time:YYYY-MM-DD}.log",
+        #     format=_log_format,
+        #     filter=lambda record: record["extra"].get("phase") == "extraction",
+        #     level=file_level,
+        #     rotation=rotation,
+        #     retention=retention,
+        # )
 
     # ===============================================
     # DPI Awareness (prevent display scaling issues)
@@ -207,6 +273,7 @@ def _():
                     "Critical: Could not lock Windows DPI scaling."
                 ) from e
 
+    _configure_logging()
     _make_dpi_aware()
 
     # Delayed iumports (GUI/Display Dependent).
@@ -241,12 +308,11 @@ def _(mo):
     mo.md(r"""
     ### Constants and Custom Exceptions
     """)
-    return
 
 
 @app.cell
 def _(Enum, NamedTuple, Path, auto, cv2, dxcam, np, vg):
-    LAUNCH_MAX_ATTEMPTS = 2
+    LAUNCH_MAX_ATTEMPTS: int = 2
     WINDOW_TITLE: str = "chiaki-ng"
     camera: dxcam.DXCamera = dxcam.create(  # ty: ignore
         device_idx=0, output_idx=0, output_color="BGRA"
@@ -259,7 +325,7 @@ def _(Enum, NamedTuple, Path, auto, cv2, dxcam, np, vg):
 
         Attributes
         ----------
-        BASE_DIR : Path
+        TEMPLATES_DIR : Path
             The root directory containing the template image assets.
         PS5_SETTINGS_ICON : Path
             The file path to the PS5 home screen settings icon template.
@@ -267,9 +333,9 @@ def _(Enum, NamedTuple, Path, auto, cv2, dxcam, np, vg):
             The file path to the College Football game tile template.
         """
 
-        BASE_DIR: Path = _PROJECT_DIR / "assets" / "templates"
-        PS5_SETTINGS_ICON: Path = BASE_DIR / "ps5_settings_icon.png"
-        CFB_GAME_TILE: Path = BASE_DIR / "cfb_game_tile.png"
+        TEMPLATES_DIR: Path = _PROJECT_DIR / "assets" / "templates"
+        PS5_SETTINGS_ICON: Path = TEMPLATES_DIR / "ps5_settings_icon.png"
+        CFB_GAME_TILE: Path = TEMPLATES_DIR / "cfb_game_tile.png"
 
     class _TemplateConfig(NamedTuple):
         """
@@ -410,11 +476,11 @@ def _(Enum, NamedTuple, Path, auto, cv2, dxcam, np, vg):
     class ChiakiWindowNotFoundError(Exception):
         """Raised when the local chiaki-ng window fails to appear or become visible."""
 
-    class PS5SettingsIconNotFoundError(Exception):
-        """Raised when the PS5 Settings Icon is not found on the PS5 home screen."""
-
     class CFBGameTileNotFoundError(Exception):
         """Raised when the CFB game tile is not found on the PS5 home screen."""
+
+    class PS5SettingsIconNotFoundError(Exception):
+        """Raised when the PS5 Settings Icon is not found on the PS5 home screen."""
 
     return (
         Button,
@@ -435,7 +501,6 @@ def _(mo):
     ### Controller Actions
     #### `VirtualController`
     """)
-    return
 
 
 @app.cell
@@ -584,11 +649,10 @@ def _(mo):
     #### `_is_image_match`
     #### `poll_for_template_match`
     """)
-    return
 
 
 @app.cell
-def _(camera: "dxcam.DXCamera", cv2, logger, np, time):
+def _(camera: dxcam.DXCamera, cv2, logger, np, time):
     def _is_image_match(
         frame: np.ndarray, template: np.ndarray, confidence_threshold: float = 0.90
     ) -> tuple[bool, float]:
@@ -710,19 +774,10 @@ def _(mo):
     #### `close_active_game`
     #### `execute_retry_delay`
     """)
-    return
 
 
 @app.cell
-def _(
-    Button,
-    Templates,
-    controller,
-    logger,
-    poll_for_template_match,
-    shutdown_pipeline_resources,
-    time,
-):
+def _(Button, Templates, controller, poll_for_template_match):
     def is_stream_active() -> bool:
         """
         Forces the PS5 home screen and checks if the video stream is live.
@@ -739,45 +794,17 @@ def _(
                 template=Templates.PS5_SETTINGS_ICON.template,
                 region=Templates.PS5_SETTINGS_ICON.region,
                 log_context="Verify Stream Active",
-                timeout=5.0,
             )
             return True
         except TimeoutError:
             return False
 
     def close_active_game() -> None:
-        """Executes the button sequence to close an active game from the home screen."""
+        """Executes button sequence to close active game from home screen."""
         controller.tap(Button.OPTIONS, rest_time=0.5)
         controller.tap(Button.CROSS, rest_time=2.0)
 
-    def execute_retry_delay(attempt: int, max_attempts: int) -> bool:
-        """
-        Shuts down resources and waits for the PS5 to enter rest mode.
-
-        Parameters
-        ----------
-        attempt : int
-            The current attempt index (0-indexed).
-        max_attempts : int
-            The maximum number of retry attempts allowed before aborting.
-
-        Returns
-        -------
-        bool
-            True if the pipeline should retry the launch sequence, or False if
-            the maximum connection attempts have been reached.
-        """
-        shutdown_pipeline_resources()
-        if attempt < max_attempts - 1:
-            logger.info("Waiting for PS5 to fully enter rest mode...")
-            time.sleep(30.0)
-            logger.info("Retrying PS5 launch sequence...")
-            return True
-        else:
-            logger.error("Max connection attempts reached. Aborting pipeline.")
-            return False
-
-    return close_active_game, execute_retry_delay, is_stream_active
+    return close_active_game, is_stream_active
 
 
 @app.cell(hide_code=True)
@@ -789,7 +816,6 @@ def _(mo):
     #### `_ensure_fullscreen`
     #### `launch_ps5`
     """)
-    return
 
 
 @app.cell
@@ -1009,7 +1035,6 @@ def _(mo):
     ### Launch CFB Function
     #### `launch_cfb_game`
     """)
-    return
 
 
 @app.cell
@@ -1092,11 +1117,10 @@ def _(mo):
     #### `shutdown_chiaki_process`
     #### `shutdown_pipeline_resources`
     """)
-    return
 
 
 @app.cell
-def _(camera: "dxcam.DXCamera", controller, logger, subprocess, time):
+def _(camera: dxcam.DXCamera, controller, logger, subprocess, time):
     def _shutdown_chiaki_process() -> None:
         """
         Terminates the chiaki-ng application, prioritizing a graceful shutdown.
@@ -1122,7 +1146,7 @@ def _(camera: "dxcam.DXCamera", controller, logger, subprocess, time):
             )
 
             # Give the application time to send the sleep command and close.
-            time.sleep(10.0)
+            time.sleep(5.0)
 
             # 2. Follow up with a force kill to ensure it isn't hanging.
             result = subprocess.run(
@@ -1156,7 +1180,7 @@ def _(camera: "dxcam.DXCamera", controller, logger, subprocess, time):
         """
         logger.info("Executing global pipeline shutdown...")
 
-        # 1. Reset the Virtual Controller
+        # Reset the controller.
         try:
             controller.gamepad.reset()
             controller.gamepad.update()
@@ -1164,7 +1188,7 @@ def _(camera: "dxcam.DXCamera", controller, logger, subprocess, time):
         except Exception:
             logger.warning("Failed to reset virtual controller.")
 
-        # 2. Stop the dxcam Capture
+        # Stop the dxcam capture.
         try:
             if camera.is_capturing:
                 camera.stop()
@@ -1172,7 +1196,7 @@ def _(camera: "dxcam.DXCamera", controller, logger, subprocess, time):
         except Exception:
             logger.warning("Failed to stop dxcam globally.")
 
-        # 3. Kill the Stream
+        # Kill the remote play stream.
         _shutdown_chiaki_process()
 
     return (shutdown_pipeline_resources,)
@@ -1184,7 +1208,6 @@ def _(mo):
     ### Convert Image Templates to Grayscale
     #### `convert_template_image_to_grayscale`
     """)
-    return
 
 
 @app.cell
@@ -1221,7 +1244,6 @@ def _(Path, cv2, logger):
         else:
             logger.error(f"Failed to read or convert: {template_path.name}")
 
-    return
 
 
 @app.cell(hide_code=True)
@@ -1230,11 +1252,10 @@ def _(mo):
     ### Preview Image Capture (for prototyping)
     #### `preview_capture`
     """)
-    return
 
 
 @app.cell
-def _(Image, camera: "dxcam.DXCamera", cv2, mo, time):
+def _(Image, camera: dxcam.DXCamera, cv2, mo, time):
     def preview_capture(
         region: tuple[int, int, int, int], timeout: float = 3.0
     ) -> mo.Html:
@@ -1288,7 +1309,6 @@ def _(Image, camera: "dxcam.DXCamera", cv2, mo, time):
     #     600,
     # )
     # preview_capture(region=_test_region)
-    return
 
 
 if __name__ == "__main__":
