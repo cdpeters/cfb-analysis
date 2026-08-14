@@ -9,6 +9,7 @@ def _(mo):
     mo.md(r"""
     ### Main Launch Sequence
     """)
+    return
 
 
 @app.cell
@@ -24,7 +25,7 @@ def _(
     launch_cfb_game,
     launch_ps5,
     logger,
-    shutdown_pipeline_resources,
+    shutdown_pipeline,
     time,
 ):
     try:
@@ -33,10 +34,13 @@ def _(
                 launch_ps5(target_config=Templates.PS5_SETTINGS_ICON)
                 logger.info("Moving from welcome tile to the first game tile...")
                 controller.tap(Button.DPAD_RIGHT)
-                launch_cfb_game(target_config=Templates.CFB_GAME_TILE)
-                # Simulate pipeline work and then completion with a delay.
+                launch_cfb_game(target_config=Templates.CFB_GAME_TITLE)
                 logger.success("Main launch sequence completed successfully!")
+                # Simulate pipeline work and then completion with a delay.
                 time.sleep(15)
+                # Move back to the home screen in order to close the game.
+                controller.hold(Button.PS, rest_time=1.0)
+                close_active_game()
                 # launch_dynasty()
                 # navigate_to_rosters()
                 break
@@ -50,11 +54,14 @@ def _(
                     logger.info(
                         "Stream is active. Initiating recovery sequence for unclosed game..."
                     )
+                    controller.tap(Button.DPAD_RIGHT)
                     close_active_game()
-                    launch_cfb_game(target_config=Templates.CFB_GAME_TILE)
+                    launch_cfb_game(target_config=Templates.CFB_GAME_TITLE)
                     logger.success("Recovery sequence completed successfully!")
                     # Simulate pipeline work and then completion with a delay.
                     time.sleep(15)
+                    controller.hold(Button.PS, rest_time=1.0)
+                    close_active_game()
                     break
 
                 else:
@@ -66,7 +73,7 @@ def _(
                         logger.info(
                             "Shutting down pipeline and waiting for PS5 to fully enter rest mode before retrying..."
                         )
-                        shutdown_pipeline_resources()
+                        shutdown_pipeline()
                         time.sleep(30.0)
                         continue
                     else:
@@ -88,7 +95,8 @@ def _(
 
     finally:
         logger.info("Executing final pipeline teardown...")
-        shutdown_pipeline_resources()
+        shutdown_pipeline()
+    return
 
 
 @app.cell(hide_code=True)
@@ -96,26 +104,22 @@ def _(mo):
     mo.md(r"""
     ### To-Do
     #### Replace template match in the CFB game launch sequence with an easier one
-    - [ ] grab an image of the "EA SPORTS College Football 27" text
-    - [ ] convert that image to grayscale
-    - [ ] adjust the template matching region (`Templates.CFB_GAME_TILE.region`) to be in the area where the text to the bottom right of the game tile shows up
-    - [ ] replace the previous template match in `launch_cfb_game` with this template match. It will be much less button clicks and animation wait times.
+    - [x] grab an image of the "EA SPORTS College Football 27" text
+    - [x] convert that image to grayscale
+    - [x] adjust the template matching region (`Templates.CFB_GAME_TITLE.region`) to be in the area where the text to the bottom right of the game tile shows up
+    - [x] replace the previous template match in `launch_cfb_game` with this template match. It will be much less button clicks and animation wait times.
 
-    #### Retry Logic: Handling unclosed game upon PS5 launch
-    - [x] Create new exception: `PS5SettingsIconNotFoundError`:
-        - [x] Create the `PS5SettingsIconNotFoundError` class
-        - [x] Except this if `launch_ps5` fails because it doesn't find the settings icon
-    - [x] Encapsulate the template match game tile sequence as a function to separate it from the very first step of moving one step to the right from the welcome screen. This is because it can be reused below since holding the PS button returns to the home screen but specifically places the cursor on the first game tile, not the welcome tile.
-    - [x] Implement retry logic as follows
-        - [x] hold PS button to return to home screen
-        - [x] initiate the template match game tile sequence, the one just encapsulated as a function
+    #### Unclosed Game Edge Case
+    - [ ] When an unclosed game is closed, the PS5 cursor will be on that game's game tile on the home screen. This means the background image for that game will be up. Check to see if there are any searches for the PS5 settings icon in this scenario because it might not match since the settings icon will now have a game background image behind it.
+    - [ ] If the above check is true, move the cursor one step to the left to put it on the welcome tile which is what the PS5 settings icon template was captured on.
 
-    #### Retry Logic: Handling `TimeoutError` in `launch_ps5` due to remote play fails to connect
-    - [x] If the `TimeoutError` is raised in `launch_ps5`, shutdown the pipeline
-    - [x] wait to allow for the ps5 to get fully into rest mode
-    - [x] retry the PS5 launch sequence.
-    - [x] Add `max_attempts` for the retry logic and default it to 1. Possibly change it to 2 if hanging a second time is common.
+    #### Closing CFB
+    - [ ] Evaluate if closing CFB game should be in `shutdown_pipeline`
+
+    #### Troubleshoot `_ensure_fullscreen`
+    - [ ] check to see if `_ensure_fullscreen` is working properly
     """)
+    return
 
 
 @app.cell(hide_code=True)
@@ -125,6 +129,7 @@ def _(mo):
     ## Appendix
     ### Imports, Logging Configuration, and Dots Per Inch (DPI) Awareness
     """)
+    return
 
 
 @app.cell
@@ -308,6 +313,7 @@ def _(mo):
     mo.md(r"""
     ### Constants and Custom Exceptions
     """)
+    return
 
 
 @app.cell
@@ -329,13 +335,13 @@ def _(Enum, NamedTuple, Path, auto, cv2, dxcam, np, vg):
             The root directory containing the template image assets.
         PS5_SETTINGS_ICON : Path
             The file path to the PS5 home screen settings icon template.
-        CFB_GAME_TILE : Path
-            The file path to the College Football game tile template.
+        CFB_GAME_TITLE : Path
+            The file path to the College Football game title template.
         """
 
         TEMPLATES_DIR: Path = _PROJECT_DIR / "assets" / "templates"
         PS5_SETTINGS_ICON: Path = TEMPLATES_DIR / "ps5_settings_icon.png"
-        CFB_GAME_TILE: Path = TEMPLATES_DIR / "cfb_game_tile.png"
+        CFB_GAME_TITLE: Path = TEMPLATES_DIR / "cfb_game_title.png"
 
     class _TemplateConfig(NamedTuple):
         """
@@ -370,8 +376,8 @@ def _(Enum, NamedTuple, Path, auto, cv2, dxcam, np, vg):
         PS5_SETTINGS_ICON : _TemplateConfig
             Configuration for detecting the settings icon on the PS5 home
             screen.
-        CFB_GAME_TILE : _TemplateConfig
-            Configuration for detecting the College Football game tile.
+        CFB_GAME_TITLE : _TemplateConfig
+            Configuration for detecting the College Football game title.
         """
 
         PS5_SETTINGS_ICON: _TemplateConfig = _TemplateConfig(
@@ -379,10 +385,10 @@ def _(Enum, NamedTuple, Path, auto, cv2, dxcam, np, vg):
             region=(1430, 20, 1520, 105),
             log_context="PS5 Home Screen",
         )
-        CFB_GAME_TILE: _TemplateConfig = _TemplateConfig(
-            template=cv2.imread(_TemplatePaths.CFB_GAME_TILE, cv2.IMREAD_GRAYSCALE),  # ty: ignore
-            region=(100, 140, 600, 600),
-            log_context="CFB Game Tile Search",
+        CFB_GAME_TITLE: _TemplateConfig = _TemplateConfig(
+            template=cv2.imread(_TemplatePaths.CFB_GAME_TITLE, cv2.IMREAD_GRAYSCALE),  # ty: ignore
+            region=(330, 225, 880, 300),
+            log_context="CFB Game Title Search",
         )
 
     class InputType(Enum):
@@ -476,15 +482,15 @@ def _(Enum, NamedTuple, Path, auto, cv2, dxcam, np, vg):
     class ChiakiWindowNotFoundError(Exception):
         """Raised when the local chiaki-ng window fails to appear or become visible."""
 
-    class CFBGameTileNotFoundError(Exception):
-        """Raised when the CFB game tile is not found on the PS5 home screen."""
+    class CFBGameTitleNotFoundError(Exception):
+        """Raised when the CFB game title is not found on the PS5 home screen."""
 
     class PS5SettingsIconNotFoundError(Exception):
         """Raised when the PS5 Settings Icon is not found on the PS5 home screen."""
 
     return (
         Button,
-        CFBGameTileNotFoundError,
+        CFBGameTitleNotFoundError,
         ChiakiWindowNotFoundError,
         InputType,
         LAUNCH_MAX_ATTEMPTS,
@@ -501,6 +507,7 @@ def _(mo):
     ### Controller Actions
     #### `VirtualController`
     """)
+    return
 
 
 @app.cell
@@ -649,10 +656,11 @@ def _(mo):
     #### `_is_image_match`
     #### `poll_for_template_match`
     """)
+    return
 
 
 @app.cell
-def _(camera: dxcam.DXCamera, cv2, logger, np, time):
+def _(camera: "dxcam.DXCamera", cv2, logger, np, time):
     def _is_image_match(
         frame: np.ndarray, template: np.ndarray, confidence_threshold: float = 0.90
     ) -> tuple[bool, float]:
@@ -712,7 +720,7 @@ def _(camera: dxcam.DXCamera, cv2, logger, np, time):
             screen region to capture.
         log_context : str
             A descriptive string detailing what is being matched (e.g.,
-            "PS5 Home Screen" or "CFB Game Tile") to provide context in
+            "PS5 Home Screen" or "CFB Game Title") to provide context in
             the logs.
         timeout : float, optional
             The maximum time in seconds to wait for a successful match.
@@ -772,8 +780,8 @@ def _(mo):
     ### Miscellaneous Main Launch Sequence Functions
     #### `is_stream_active`
     #### `close_active_game`
-    #### `execute_retry_delay`
     """)
+    return
 
 
 @app.cell
@@ -788,7 +796,10 @@ def _(Button, Templates, controller, poll_for_template_match):
             True if the PS5 settings icon is successfully matched within the
             timeout, or False if a TimeoutError is caught.
         """
-        controller.hold(Button.PS, rest_time=2.0)
+        controller.hold(Button.PS, rest_time=1.5)
+        # Move to the "Welcome" tile, the screen from which the PS5 settings
+        # icon template was captured.
+        controller.tap(Button.DPAD_LEFT)
         try:
             poll_for_template_match(
                 template=Templates.PS5_SETTINGS_ICON.template,
@@ -802,7 +813,7 @@ def _(Button, Templates, controller, poll_for_template_match):
     def close_active_game() -> None:
         """Executes button sequence to close active game from home screen."""
         controller.tap(Button.OPTIONS, rest_time=0.5)
-        controller.tap(Button.CROSS, rest_time=2.0)
+        controller.tap(Button.CROSS, rest_time=3.0)
 
     return close_active_game, is_stream_active
 
@@ -816,6 +827,7 @@ def _(mo):
     #### `_ensure_fullscreen`
     #### `launch_ps5`
     """)
+    return
 
 
 @app.cell
@@ -1035,12 +1047,13 @@ def _(mo):
     ### Launch CFB Function
     #### `launch_cfb_game`
     """)
+    return
 
 
 @app.cell
 def _(
     Button,
-    CFBGameTileNotFoundError,
+    CFBGameTitleNotFoundError,
     controller,
     logger,
     poll_for_template_match,
@@ -1058,53 +1071,40 @@ def _(
         ----------
         target_config : _TemplateConfig
             The configuration object containing the visual template, capture
-            region, and logging context used to identify the CFB game tile.
+            region, and logging context used to identify the CFB game title.
         max_attempts : int, optional
             The maximum number of game tiles to shift through before failing.
             Default is 10.
 
         Raises
         ------
-        CFBGameTileNotFoundError
-            If the target game tile cannot be located after shifting through the
+        CFBGameTitleNotFoundError
+            If the target game title cannot be located after shifting through the
             specified maximum number of attempts.
         """
         for attempt in range(max_attempts):
-            logger.info(f"Evaluating game tile {attempt + 1}...")
-            # Bring up the options for the current game tile's game.
-            controller.tap(Button.OPTIONS, rest_time=0.5)
+            logger.info(f"Evaluating game title {attempt + 1}...")
 
-            # D-Pad down x5 to get to the "Information" option.
-            for _ in range(5):
-                controller.tap(Button.DPAD_DOWN, rest_time=0.15)
-
-            # Cross to select the "Information" option.
-            controller.tap(Button.CROSS, rest_time=1.5)
-
-            # Look for a match with the CFB game tile template.
+            # Look for a match with the CFB game title template.
             try:
                 poll_for_template_match(
                     template=target_config.template,
                     region=target_config.region,
                     log_context=target_config.log_context,
-                    timeout=5.0,
+                    timeout=3.0,
                 )
             except TimeoutError:
-                # Circle to back out of "Information" screen.
-                controller.tap(Button.CIRCLE, rest_time=1.0)
-                logger.info("Target game not found. Shifting to next tile...")
+                logger.info("Target game not found. Shifting to next title...")
                 controller.tap(Button.DPAD_RIGHT)
                 continue
 
-            # Circle to back out of "Information" screen.
-            controller.tap(Button.CIRCLE, rest_time=1.0)
             logger.success("Target game located. Launching...")
             controller.tap(Button.CROSS)
             return
 
-        logger.error(f"Failed to locate the game after {max_attempts} tiles.")
-        raise CFBGameTileNotFoundError(
-            f"Target game could not be located after {max_attempts} tile shifts."
+        logger.error(f"Failed to locate the game after {max_attempts} titles.")
+        raise CFBGameTitleNotFoundError(
+            f"Target game could not be located after {max_attempts} title shifts."
         )
 
     return (launch_cfb_game,)
@@ -1114,13 +1114,14 @@ def _(
 def _(mo):
     mo.md(r"""
     ### Shutdown Pipeline Functions
-    #### `shutdown_chiaki_process`
-    #### `shutdown_pipeline_resources`
+    #### `_shutdown_chiaki_process`
+    #### `shutdown_pipeline`
     """)
+    return
 
 
 @app.cell
-def _(camera: dxcam.DXCamera, controller, logger, subprocess, time):
+def _(camera: "dxcam.DXCamera", controller, logger, subprocess, time):
     def _shutdown_chiaki_process() -> None:
         """
         Terminates the chiaki-ng application, prioritizing a graceful shutdown.
@@ -1169,7 +1170,7 @@ def _(camera: dxcam.DXCamera, controller, logger, subprocess, time):
                 "Critical error occurred while attempting to terminate chiaki-ng."
             )
 
-    def shutdown_pipeline_resources() -> None:
+    def shutdown_pipeline() -> None:
         """
         Releases hardware resources and forcefully stops external applications.
 
@@ -1199,7 +1200,7 @@ def _(camera: dxcam.DXCamera, controller, logger, subprocess, time):
         # Kill the remote play stream.
         _shutdown_chiaki_process()
 
-    return (shutdown_pipeline_resources,)
+    return (shutdown_pipeline,)
 
 
 @app.cell(hide_code=True)
@@ -1208,6 +1209,7 @@ def _(mo):
     ### Convert Image Templates to Grayscale
     #### `convert_template_image_to_grayscale`
     """)
+    return
 
 
 @app.cell
@@ -1244,6 +1246,7 @@ def _(Path, cv2, logger):
         else:
             logger.error(f"Failed to read or convert: {template_path.name}")
 
+    return
 
 
 @app.cell(hide_code=True)
@@ -1252,10 +1255,11 @@ def _(mo):
     ### Preview Image Capture (for prototyping)
     #### `preview_capture`
     """)
+    return
 
 
 @app.cell
-def _(Image, camera: dxcam.DXCamera, cv2, mo, time):
+def _(Image, camera: "dxcam.DXCamera", cv2, mo, time):
     def preview_capture(
         region: tuple[int, int, int, int], timeout: float = 3.0
     ) -> mo.Html:
@@ -1309,6 +1313,7 @@ def _(Image, camera: dxcam.DXCamera, cv2, mo, time):
     #     600,
     # )
     # preview_capture(region=_test_region)
+    return
 
 
 if __name__ == "__main__":
