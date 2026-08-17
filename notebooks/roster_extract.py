@@ -1,7 +1,7 @@
 import marimo
 
 __generated_with = "0.23.16"
-app = marimo.App()
+app = marimo.App(width="medium")
 
 
 @app.cell(hide_code=True)
@@ -12,90 +12,77 @@ def _(mo):
     return
 
 
-@app.cell
+@app.cell(disabled=True)
 def _(
-    Button,
-    ChiakiWindowNotFoundError,
-    LAUNCH_MAX_ATTEMPTS: int,
-    PS5SettingsIconNotFoundError,
+    LaunchState,
+    MAX_ATTEMPTS_LAUNCH,
     Templates,
     close_active_game,
-    controller,
-    is_stream_active,
+    focus_first_game_tile,
     launch_cfb_game,
     launch_ps5,
     logger,
+    return_to_home_screen,
+    route_launch_error,
     shutdown_pipeline,
     time,
 ):
     try:
-        for attempt in range(LAUNCH_MAX_ATTEMPTS):
+        for attempt in range(MAX_ATTEMPTS_LAUNCH):
             try:
-                launch_ps5(target_config=Templates.PS5_SETTINGS_ICON)
-                logger.info("Moving from welcome tile to the first game tile...")
-                controller.tap(Button.DPAD_RIGHT)
-                launch_cfb_game(target_config=Templates.CFB_GAME_TITLE)
-                logger.success("Main launch sequence completed successfully!")
-                # Simulate pipeline work and then completion with a delay.
-                time.sleep(15)
-                # Move back to the home screen in order to close the game.
-                controller.hold(Button.PS, rest_time=1.0)
-                close_active_game()
-                # launch_dynasty()
-                # navigate_to_rosters()
+                # ==== Launch Sequence ======================================
+                with logger.contextualize(phase="launch"):
+                    launch_ps5(target_config=Templates.PS5_SETTINGS_ICON)
+                    focus_first_game_tile()
+                    launch_cfb_game(target_config=Templates.CFB_GAME_TITLE)
+                    # launch_dynasty()
+                    # navigate_to_rosters()
+                    logger.success("Main launch sequence completed successfully!")
+
+                # ==== Roster Extraction ====================================
+                with logger.contextualize(phase="extraction"):
+                    # Simulate roster extraction and completion.
+                    logger.info("Initiating data extraction...")
+                    time.sleep(15)
+
+                # ==== Shut Down Process ====================================
+                with logger.contextualize(phase="shutdown"):
+                    # Move to the PS5 home screen and close the CFB game.
+                    return_to_home_screen()
+                    close_active_game()
                 break
 
-            except PS5SettingsIconNotFoundError:
-                logger.info(
-                    "Settings icon not found. Verifying if connection is hung or a game is open..."
-                )
+            except Exception as e:
+                # ==== Recovery Routing =====================================
+                with logger.contextualize(phase="recovery"):
+                    # Route the error and determine the next pipeline state.
+                    state = route_launch_error(e, attempt, MAX_ATTEMPTS_LAUNCH)
 
-                if is_stream_active():
-                    logger.info(
-                        "Stream is active. Initiating recovery sequence for unclosed game..."
-                    )
-                    controller.tap(Button.DPAD_RIGHT)
-                    close_active_game()
-                    launch_cfb_game(target_config=Templates.CFB_GAME_TITLE)
-                    logger.success("Recovery sequence completed successfully!")
-                    # Simulate pipeline work and then completion with a delay.
-                    time.sleep(15)
-                    controller.hold(Button.PS, rest_time=1.0)
-                    close_active_game()
+                if state == LaunchState.RECOVERED:
+                    # ==== Roster Extraction ================================
+                    with logger.contextualize(phase="extraction"):
+                        # The game was recovered and successfully launched. Proceed to extraction.
+                        logger.info("Initiating data extraction after recovery...")
+                        time.sleep(15)
+
+                    # ==== Shut Down Process ================================
+                    with logger.contextualize(phase="shutdown"):
+                        # Move to the PS5 home screen and close the CFB game.
+                        return_to_home_screen()
+                        close_active_game()
                     break
 
-                else:
-                    logger.error(
-                        f"Stream is unresponsive (connection failed on attempt {attempt + 1})."
-                    )
+                elif state == LaunchState.RETRY:
+                    # The stream was hung, and the PS5 was reset. Try to launch again.
+                    continue
 
-                    if attempt + 1 < LAUNCH_MAX_ATTEMPTS:
-                        logger.info(
-                            "Shutting down pipeline and waiting for PS5 to fully enter rest mode before retrying..."
-                        )
-                        shutdown_pipeline()
-                        time.sleep(30.0)
-                        continue
-                    else:
-                        logger.error(
-                            "Max connection attempts reached. Aborting pipeline."
-                        )
-                        break
-
-            except ChiakiWindowNotFoundError:
-                logger.error(
-                    "Local chiaki-ng window failed to launch. Aborting pipeline."
-                )
-                break
-
-    except Exception:
-        # Catch-all for unforeseen errors to ensure they hit the log file
-        # before the pipeline teardown wipes the state.
-        logger.exception("An unforeseen error crashed the main launch sequence.")
+                elif state == LaunchState.ABORT:
+                    # A fatal error occurred or max attempts reached. Break the loop.
+                    break
 
     finally:
-        logger.info("Executing final pipeline teardown...")
-        shutdown_pipeline()
+        with logger.contextualize(phase="shutdown"):
+            shutdown_pipeline()
     return
 
 
@@ -103,21 +90,21 @@ def _(
 def _(mo):
     mo.md(r"""
     ### To-Do
-    #### Replace template match in the CFB game launch sequence with an easier one
-    - [x] grab an image of the "EA SPORTS College Football 27" text
-    - [x] convert that image to grayscale
-    - [x] adjust the template matching region (`Templates.CFB_GAME_TITLE.region`) to be in the area where the text to the bottom right of the game tile shows up
-    - [x] replace the previous template match in `launch_cfb_game` with this template match. It will be much less button clicks and animation wait times.
-
-    #### Unclosed Game Edge Case
-    - [ ] When an unclosed game is closed, the PS5 cursor will be on that game's game tile on the home screen. This means the background image for that game will be up. Check to see if there are any searches for the PS5 settings icon in this scenario because it might not match since the settings icon will now have a game background image behind it.
-    - [ ] If the above check is true, move the cursor one step to the left to put it on the welcome tile which is what the PS5 settings icon template was captured on.
-
-    #### Closing CFB
-    - [ ] Evaluate if closing CFB game should be in `shutdown_pipeline`
-
-    #### Troubleshoot `_ensure_fullscreen`
-    - [ ] check to see if `_ensure_fullscreen` is working properly
+    #### Build the `launch_dynasty` function
+    - `launch_dynasty` needs to make it to CFB's main menu screen, close the possible "featured news" popup, look for the possible "hotfix update" overlay and address that, then find the "Dynasty" option on the main menu and click it, and then find the "Continue" option and click it.
+    - [ ] Build `launch_dynasty`
+    - [ ] handle any errors/failure paths
+    #### Build the `navigate_to_rosters` function
+    - [ ] Build `navigate_to_rosters`
+    #### Optimize timeouts
+    - [ ] add timers to everything to see how long the actions are taking.
+    - [ ] run the pipeline several times and collect and average the times.
+    - [ ] create a table that shows the name of the timer, the average execution time, and the assigned timeout value.
+    - [ ] reduce timeouts where there is a large discrepancy between the timeout and the actual time a given task is taking.
+    #### Split code into modules
+    - [ ] decide on number of modules and module names for the current pipeline code
+    - [ ] split each piece of functionality into their corresponding modules
+    - [ ] re-organize the `roster_extract.py` to just contain the main launch sequence and appropriate module imports including the new first-party modules.
     """)
     return
 
@@ -141,7 +128,7 @@ def _():
     import time
     from enum import Enum, auto
     from pathlib import Path
-    from typing import NamedTuple
+    from typing import NamedTuple, ClassVar
 
     import marimo as mo
     import numpy as np
@@ -187,51 +174,34 @@ def _():
             Default is "7 days".
         """
         # Create 'logs' directory.
-        _log_path = Path(log_dir)
-        _log_path.mkdir(parents=True, exist_ok=True)
+        log_path = Path(log_dir)
+        log_path.mkdir(parents=True, exist_ok=True)
 
         # Reset Loguru's default state.
         logger.remove()
 
-        _log_format = (
+        log_format = (
             "<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | "
             "<level>{level: <8}</level> | "
-            # "<magenta>{extra[phase]}</magenta> | "
+            "<magenta>{extra[phase]}</magenta> | "
             "<cyan>{function}</cyan>:<cyan>{line}</cyan> - "
             "<level>{message}</level>"
         )
 
         # Inject a default phase so {extra[phase]} never throws a KeyError.
-        # logger.configure(extra={"phase": "global"})
+        logger.configure(extra={"phase": "global"})
 
-        # Standard console output
-        logger.add(sys.stdout, format=_log_format, level=console_level, colorize=True)
+        # Console output sink.
+        logger.add(sys.stdout, format=log_format, level=console_level, colorize=True)
 
+        # File sink.
         logger.add(
-            "logs/cfb_pipeline_{time:YYYY-MM-DD}.log",
+            log_path / "cfb_pipeline_{time:YYYY-MM-DD}.log",
+            format=log_format,
             rotation=rotation,
             retention=retention,
             level=file_level,
         )
-
-        # Phase-specific file routing with lambda filters.
-        # logger.add(
-        #     log_path / "cfb_launch_{time:YYYY-MM-DD}.log",
-        #     format=_log_format,
-        #     filter=lambda record: record["extra"].get("phase") == "launch",
-        #     level=file_level,
-        #     rotation=rotation,
-        #     retention=retention,
-        # )
-
-        # logger.add(
-        #     log_path / "cfb_extraction_{time:YYYY-MM-DD}.log",
-        #     format=_log_format,
-        #     filter=lambda record: record["extra"].get("phase") == "extraction",
-        #     level=file_level,
-        #     rotation=rotation,
-        #     retention=retention,
-        # )
 
     # ===============================================
     # DPI Awareness (prevent display scaling issues)
@@ -311,19 +281,71 @@ def _():
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ### Constants and Custom Exceptions
+    ### Constants, Classes, and Custom Exceptions
     """)
     return
 
 
 @app.cell
 def _(Enum, NamedTuple, Path, auto, cv2, dxcam, np, vg):
-    LAUNCH_MAX_ATTEMPTS: int = 2
-    WINDOW_TITLE: str = "chiaki-ng"
+    MAX_ATTEMPTS_LAUNCH = 2
+    WINDOW_TITLE = "chiaki-ng"
     camera: dxcam.DXCamera = dxcam.create(  # ty: ignore
         device_idx=0, output_idx=0, output_color="BGRA"
     )
-    _PROJECT_DIR: Path = Path.cwd().parent
+    _PROJECT_DIR = Path.cwd().parent
+
+    class TemplateFileNotFoundError(Exception):
+        """Raised when the image template file is not found."""
+
+    class TemplateMatchTimeoutError(Exception):
+        """Raised when the timeout is exceeded during polling for a template match."""
+
+    class ChiakiExecutableNotFoundError(Exception):
+        """Raised when the `chiaki-ng` executable is not found."""
+
+    class ChiakiWindowNotFoundError(Exception):
+        """Raised when the local chiaki-ng window fails to appear or become visible."""
+
+    class ChiakiFullscreenError(Exception):
+        """Raised when forcing chiaki to fullscreen fails."""
+
+    class PS5SettingsIconNotFoundError(Exception):
+        """Raised when the PS5 Settings Icon is not found on the PS5 home screen."""
+
+    class CFBGameTitleNotFoundError(Exception):
+        """Raised when the CFB game title is not found on the PS5 home screen."""
+
+    class HotfixAppliedError(Exception):
+        """Raised when a hotfix is detected and dismissed, requiring a clean game restart."""
+
+    def _load_template(path: Path) -> np.ndarray:
+        """
+        Loads a grayscale image from disk and validates it.
+
+        Parameters
+        ----------
+        path : Path
+            The file path to the image.
+
+        Returns
+        -------
+        np.ndarray
+            The loaded grayscale image array.
+
+        Raises
+        ------
+        TemplateFileNotFoundError
+            If OpenCV fails to load the image (returning None).
+        """
+        image = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
+
+        if image is None:
+            raise TemplateFileNotFoundError(
+                f"Critical: Failed to load template at {path}"
+            )
+
+        return image
 
     class _TemplatePaths:
         """
@@ -339,11 +361,11 @@ def _(Enum, NamedTuple, Path, auto, cv2, dxcam, np, vg):
             The file path to the College Football game title template.
         """
 
-        TEMPLATES_DIR: Path = _PROJECT_DIR / "assets" / "templates"
-        PS5_SETTINGS_ICON: Path = TEMPLATES_DIR / "ps5_settings_icon.png"
-        CFB_GAME_TITLE: Path = TEMPLATES_DIR / "cfb_game_title.png"
+        TEMPLATES_DIR = _PROJECT_DIR / "assets" / "templates"
+        PS5_SETTINGS_ICON = TEMPLATES_DIR / "ps5_settings_icon.png"
+        CFB_GAME_TITLE = TEMPLATES_DIR / "cfb_game_title.png"
 
-    class _TemplateConfig(NamedTuple):
+    class TemplateConfig(NamedTuple):
         """
         A structured configuration for a visual template matching target.
 
@@ -367,28 +389,28 @@ def _(Enum, NamedTuple, Path, auto, cv2, dxcam, np, vg):
         """
         Pre-configured visual templates used throughout the pipeline.
 
-        This class acts as a namespace to hold instantiated `_TemplateConfig`
+        This class acts as a namespace to hold instantiated `TemplateConfig`
         objects, ensuring templates are loaded into memory once and their
         search regions are standardized.
 
         Attributes
         ----------
-        PS5_SETTINGS_ICON : _TemplateConfig
+        PS5_SETTINGS_ICON : TemplateConfig
             Configuration for detecting the settings icon on the PS5 home
             screen.
-        CFB_GAME_TITLE : _TemplateConfig
+        CFB_GAME_TITLE : TemplateConfig
             Configuration for detecting the College Football game title.
         """
 
-        PS5_SETTINGS_ICON: _TemplateConfig = _TemplateConfig(
-            template=cv2.imread(_TemplatePaths.PS5_SETTINGS_ICON, cv2.IMREAD_GRAYSCALE),  # ty: ignore
+        PS5_SETTINGS_ICON = TemplateConfig(
+            template=_load_template(_TemplatePaths.PS5_SETTINGS_ICON),
             region=(1430, 20, 1520, 105),
             log_context="PS5 Home Screen",
         )
-        CFB_GAME_TITLE: _TemplateConfig = _TemplateConfig(
-            template=cv2.imread(_TemplatePaths.CFB_GAME_TITLE, cv2.IMREAD_GRAYSCALE),  # ty: ignore
+        CFB_GAME_TITLE = TemplateConfig(
+            template=_load_template(_TemplatePaths.CFB_GAME_TITLE),
             region=(330, 225, 880, 300),
-            log_context="CFB Game Title Search",
+            log_context="CFB Game Title",
         )
 
     class InputType(Enum):
@@ -479,22 +501,57 @@ def _(Enum, NamedTuple, Path, auto, cv2, dxcam, np, vg):
         PS = (InputType.SPECIAL, vg.DS4_SPECIAL_BUTTONS.DS4_SPECIAL_BUTTON_PS)
         OPTIONS = (InputType.STANDARD, vg.DS4_BUTTONS.DS4_BUTTON_OPTIONS)
 
-    class ChiakiWindowNotFoundError(Exception):
-        """Raised when the local chiaki-ng window fails to appear or become visible."""
+    class LaunchState(Enum):
+        """
+        Represents the pipeline state after error evaluation.
 
-    class CFBGameTitleNotFoundError(Exception):
-        """Raised when the CFB game title is not found on the PS5 home screen."""
+        Attributes
+        ----------
+        RECOVERED : LaunchState
+            Indicates the error was handled, the game was successfully
+            launched during recovery, and the pipeline should proceed
+            directly to extraction.
+        RETRY : LaunchState
+            Indicates a recoverable hang or hardware failure, requiring
+            the orchestrator to restart the main launch loop.
+        ABORT : LaunchState
+            Indicates a fatal OS-level or navigation failure, requiring
+            an immediate pipeline shutdown.
+        """
 
-    class PS5SettingsIconNotFoundError(Exception):
-        """Raised when the PS5 Settings Icon is not found on the PS5 home screen."""
+        RECOVERED = auto()
+        RETRY = auto()
+        ABORT = auto()
+
+    class CFBMainMenuState(Enum):
+        """
+        Enum tracking the identified state of the CFB game main menu.
+
+        Attributes
+        ----------
+        MAIN_MENU : auto
+            Indicates the main menu has been successfully identified and stabilized.
+        HOTFIX : auto
+            Indicates a hotfix overlay has been detected on the screen.
+        """
+
+        MAIN_MENU = auto()
+        HOTFIX = auto()
 
     return (
         Button,
         CFBGameTitleNotFoundError,
+        CFBMainMenuState,
+        ChiakiExecutableNotFoundError,
+        ChiakiFullscreenError,
         ChiakiWindowNotFoundError,
+        HotfixAppliedError,
         InputType,
-        LAUNCH_MAX_ATTEMPTS,
+        LaunchState,
+        MAX_ATTEMPTS_LAUNCH,
         PS5SettingsIconNotFoundError,
+        TemplateConfig,
+        TemplateMatchTimeoutError,
         Templates,
         WINDOW_TITLE,
         camera,
@@ -535,15 +592,13 @@ def _(Button, InputType, logger, time, vg):
             OS.
         """
 
-        DEFAULT_TAP_TIME: float = 0.1
-        DEFAULT_HOLD_TIME: float = 1.2
-        DEFAULT_REST_TIME: float = 0.3
+        DEFAULT_TAP_TIME = 0.1
+        DEFAULT_HOLD_TIME = 1.2
+        DEFAULT_REST_TIME = 0.3
 
         def __init__(self) -> None:
-            """
-            Initializes the virtual gamepad.
-            """
-            self.gamepad: vg.VDS4Gamepad = vg.VDS4Gamepad()
+            """Initializes the virtual gamepad."""
+            self.gamepad = vg.VDS4Gamepad()
 
             # Allow the OS time to mount the virtual controller before sending
             # inputs.
@@ -595,6 +650,12 @@ def _(Button, InputType, logger, time, vg):
 
             self.gamepad.update()
             time.sleep(rest_time)
+
+            action_type = "tap" if action_time == self.DEFAULT_TAP_TIME else "hold"
+
+            logger.trace(
+                f"Controller input executed: {action_type} {button.name} (rest time: {rest_time}s)"
+            )
 
         def tap(
             self,
@@ -653,15 +714,22 @@ def _(Button, InputType, logger, time, vg):
 def _(mo):
     mo.md(r"""
     ### Template Matching Functions
-    #### `_is_image_match`
+    #### `is_image_match`
     #### `poll_for_template_match`
     """)
     return
 
 
 @app.cell
-def _(camera: "dxcam.DXCamera", cv2, logger, np, time):
-    def _is_image_match(
+def _(
+    TemplateMatchTimeoutError,
+    camera: "dxcam.DXCamera",
+    cv2,
+    logger,
+    np,
+    time,
+):
+    def is_image_match(
         frame: np.ndarray, template: np.ndarray, confidence_threshold: float = 0.90
     ) -> tuple[bool, float]:
         """
@@ -674,7 +742,7 @@ def _(camera: "dxcam.DXCamera", cv2, logger, np, time):
         Parameters
         ----------
         frame : np.ndarray
-            The BGR color image array (captured frame) to be evaluated.
+            The BGRA color image array (captured frame) to be evaluated.
         template : np.ndarray
             The grayscale image array used as the template for matching.
         confidence_threshold : float, optional
@@ -731,7 +799,7 @@ def _(camera: "dxcam.DXCamera", cv2, logger, np, time):
 
         Raises
         ------
-        TimeoutError
+        TemplateMatchTimeoutError
             If a match exceeding the confidence threshold is not found within
             the timeout period.
         """
@@ -744,14 +812,20 @@ def _(camera: "dxcam.DXCamera", cv2, logger, np, time):
 
         # Use try-finally block to ensure the background camera thread is
         # stopped even if an error occurs.
+        highest_confidence_seen = 0.0
         try:
             while time.time() - start_time < timeout:
-                frame = camera.get_latest_frame()
+                frame: np.ndarray | None = camera.get_latest_frame()
 
                 if frame is not None and frame.max() > 0:
-                    is_match, confidence = _is_image_match(
-                        frame, template, confidence_threshold
+                    is_match, confidence = is_image_match(
+                        frame=frame,
+                        template=template,
+                        confidence_threshold=confidence_threshold,
                     )
+
+                    if confidence > highest_confidence_seen:
+                        highest_confidence_seen = confidence
 
                     if is_match:
                         logger.success(
@@ -763,59 +837,103 @@ def _(camera: "dxcam.DXCamera", cv2, logger, np, time):
                 # redundant cv2 processing.
                 time.sleep(0.1)
 
-            logger.error(
-                f"Polling for '{log_context}' timed out after {timeout} seconds."
+            logger.debug(
+                f"Polling for '{log_context}' timed out after {timeout} seconds "
+                f"(Max confidence seen: {highest_confidence_seen:.2f})."
             )
-            raise TimeoutError(f"Failed to match '{log_context}' within {timeout}s.")
+
+            raise TemplateMatchTimeoutError(
+                f"Failed to match '{log_context}' within {timeout}s."
+            )
 
         finally:
             camera.stop()
 
-    return (poll_for_template_match,)
+    return is_image_match, poll_for_template_match
 
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ### Miscellaneous Main Launch Sequence Functions
-    #### `is_stream_active`
+    ### UI Navigation/Evaluation Functions
+    #### `focus_first_game_tile`
+    #### `focus_welcome_tile`
+    #### `is_home_screen_visible`
+    #### `return_to_home_screen`
     #### `close_active_game`
     """)
     return
 
 
 @app.cell
-def _(Button, Templates, controller, poll_for_template_match):
-    def is_stream_active() -> bool:
+def _(
+    Button,
+    TemplateConfig,
+    TemplateMatchTimeoutError,
+    controller,
+    logger,
+    poll_for_template_match,
+):
+    def focus_first_game_tile() -> None:
+        """Move PS5 home screen cursor from welcome tile to first game tile."""
+        logger.info("Moving from welcome tile to the first game tile...")
+        controller.tap(Button.DPAD_RIGHT)
+
+    def focus_welcome_tile() -> None:
+        """Move PS5 home screen cursor from first game tile to welcome tile."""
+        logger.info("Moving cursor to the welcome tile...")
+        controller.tap(Button.DPAD_LEFT)
+
+    def is_home_screen_visible(target_config: TemplateConfig) -> bool:
         """
-        Forces the PS5 home screen and checks if the video stream is live.
+        Evaluates if the PS5 home screen is currently rendered.
+
+        Parameters
+        ----------
+        target_config : TemplateConfig
+            The configuration object containing the visual template, capture
+            region, and logging context used to verify the PS5 home screen.
 
         Returns
         -------
         bool
             True if the PS5 settings icon is successfully matched within the
-            timeout, or False if a TimeoutError is caught.
+            timeout, or False if a TemplateMatchTimeoutError is caught.
         """
-        controller.hold(Button.PS, rest_time=1.5)
-        # Move to the "Welcome" tile, the screen from which the PS5 settings
-        # icon template was captured.
-        controller.tap(Button.DPAD_LEFT)
         try:
             poll_for_template_match(
-                template=Templates.PS5_SETTINGS_ICON.template,
-                region=Templates.PS5_SETTINGS_ICON.region,
-                log_context="Verify Stream Active",
+                template=target_config.template,
+                region=target_config.region,
+                log_context="Verify Home Screen Visible",
             )
             return True
-        except TimeoutError:
+        except TemplateMatchTimeoutError:
             return False
 
+    def return_to_home_screen() -> None:
+        """Force PS5 to return to the home screen by holding the PS button."""
+        logger.info("Holding PS button to return to the home screen...")
+        controller.hold(Button.PS, rest_time=1.0)
+
     def close_active_game() -> None:
-        """Executes button sequence to close active game from home screen."""
+        """
+        Executes sequence to close active game from home screen.
+
+        This function requires that the PS5 cursor is currently on the active
+        game's tile on the home screen prior to executing the button sequence
+        for closing the game.
+        """
+        logger.info("Executing sequence to close the active game...")
         controller.tap(Button.OPTIONS, rest_time=0.5)
         controller.tap(Button.CROSS, rest_time=3.0)
 
-    return close_active_game, is_stream_active
+    return (
+        close_active_game,
+        focus_first_game_tile,
+        focus_welcome_tile,
+        is_home_screen_visible,
+        return_to_home_screen,
+    )
 
 
 @app.cell(hide_code=True)
@@ -832,10 +950,14 @@ def _(mo):
 
 @app.cell
 def _(
+    ChiakiExecutableNotFoundError,
+    ChiakiFullscreenError,
     ChiakiWindowNotFoundError,
     PS5SettingsIconNotFoundError,
     Path,
-    WINDOW_TITLE: str,
+    TemplateConfig,
+    TemplateMatchTimeoutError,
+    WINDOW_TITLE,
     logger,
     poll_for_template_match,
     subprocess,
@@ -850,26 +972,21 @@ def _(
 
         Raises
         ------
-        FileNotFoundError
+        ChiakiExecutableNotFoundError
             If the chiaki-ng executable cannot be found at the specified path.
-        Exception
-            If the underlying subprocess fails to execute.
         """
         logger.info("Starting chiaki-ng launch sequence...")
         chiaki_path = Path(r"C:\Program Files\chiaki-ng\chiaki.exe")
 
         if not chiaki_path.exists():
-            logger.error(f"Executable not found at: {chiaki_path}")
-            raise FileNotFoundError(f"Could not find chiaki-ng at {chiaki_path}")
+            raise ChiakiExecutableNotFoundError(
+                f"Could not find chiaki-ng at {chiaki_path}"
+            )
 
-        try:
-            subprocess.Popen([chiaki_path])
-            logger.debug(f"Executed subprocess: {chiaki_path}")
-        except Exception:
-            logger.exception("Failed to execute chiaki-ng subprocess.")
-            raise
+        subprocess.Popen([chiaki_path])
+        logger.debug(f"Executed subprocess: {chiaki_path}")
 
-    def _find_and_focus_window(window_title: str, timeout: float = 30.0) -> int:
+    def _find_and_focus_window(window_title: str) -> int:
         """
         Finds and readies the `window_title` window.
 
@@ -879,21 +996,19 @@ def _(
         Parameters
         ----------
         window_title : str
-            The exact exact title of the window to search for.
-        timeout : float, optional
-            The maximum time in seconds to poll for the window. Default is
-            30.0.
+            The exact title of the window to search for.
 
         Returns
         -------
         int
-            The window handle (HWND) of the found window.
+            The window handle (hwnd) of the found window.
 
         Raises
         ------
         ChiakiWindowNotFoundError
             If the window is not found or visible within the timeout period.
         """
+        timeout = 30.0
         start_time = time.time()
 
         logger.info(f"Polling OS for window '{window_title}' (Timeout: {timeout}s)...")
@@ -906,7 +1021,6 @@ def _(
                 logger.success(
                     f"Window '{window_title}' found and visible after {elapsed}s."
                 )
-
                 # Ensure the window is active and focused.
                 win32gui.SetForegroundWindow(hwnd)
                 return hwnd
@@ -915,7 +1029,6 @@ def _(
             # the window.
             time.sleep(0.1)
 
-        logger.error(f"Window polling timed out after {timeout} seconds.")
         raise ChiakiWindowNotFoundError(
             f"Window '{window_title}' failed to launch within the timeout period."
         )
@@ -934,30 +1047,31 @@ def _(
         Parameters
         ----------
         hwnd : int
-            The window handle (HWND) of the application to check and modify.
+            The window handle (hwnd) of the application to check and modify.
         max_attempts : int, optional
             The maximum number of times to attempt toggling full screen before
             failing. Default is 3.
 
         Raises
         ------
-        RuntimeError
+        ChiakiFullscreenError
             If the window fails to enter full screen mode after the specified
             maximum number of attempts.
         """
         for attempt in range(max_attempts):
-            # 1. Get the handle for the monitor that currently contains the window
-            # MONITOR_DEFAULTTONEAREST (2) ensures it grabs the closest screen if the window is between two
+            # Get the handle for monitor that currently contains the window.
+            # MONITOR_DEFAULTTONEAREST (2) ensures it grabs the closest screen
+            # if the window is between two.
             monitor_handle = win32api.MonitorFromWindow(hwnd, 2)
 
-            # 2. Get the exact coordinate boundaries of that specific monitor
+            # Get the exact coordinate boundaries of that specific monitor.
             monitor_info = win32api.GetMonitorInfo(monitor_handle)
             mon_left, mon_top, mon_right, mon_bottom = monitor_info["Monitor"]
 
-            # 3. Get the current window bounding box
+            # Get the current window bounding box.
             win_left, win_top, win_right, win_bottom = win32gui.GetWindowRect(hwnd)
 
-            # 4. Check if the window perfectly covers its assigned monitor
+            # Check if the window perfectly covers its assigned monitor.
             if (
                 win_left == mon_left
                 and win_top == mon_top
@@ -974,21 +1088,22 @@ def _(
                 f"Sending F11 toggle..."
             )
 
-            # Ensure the window is focused before sending keystrokes
+            # Ensure the window is focused before sending keystrokes.
             win32gui.SetForegroundWindow(hwnd)
             time.sleep(0.5)
 
-            # Simulate pressing F11 to trigger the chiaki-ng native fullscreen toggle
+            # Simulate pressing F11 to trigger the chiaki-ng native fullscreen
+            # toggle.
             win32api.keybd_event(win32con.VK_F11, 0, 0, 0)
+            time.sleep(0.1)
             win32api.keybd_event(win32con.VK_F11, 0, win32con.KEYEVENTF_KEYUP, 0)
 
-            # Allow time for the rendering engine to transition
+            # Allow time for the rendering engine to transition.
             time.sleep(1.5)
 
-        logger.error("Failed to force chiaki-ng into full screen mode.")
-        raise RuntimeError("chiaki-ng fullscreen correction failed.")
+        raise ChiakiFullscreenError("chiaki-ng fullscreen correction failed.")
 
-    def launch_ps5(target_config: _TemplateConfig) -> None:
+    def launch_ps5(target_config: TemplateConfig) -> None:
         """
         Executes the startup sequence to establish a remote play connection.
 
@@ -1000,24 +1115,24 @@ def _(
 
         Parameters
         ----------
-        target_config : _TemplateConfig
+        target_config : TemplateConfig
             The configuration object containing the visual template, capture
             region, and logging context used to verify the PS5 home screen.
 
         Raises
         ------
-        FileNotFoundError
+        ChiakiExecutableNotFoundError
             If the chiaki-ng executable cannot be found during the launch
             process.
         ChiakiWindowNotFoundError
             If the chiaki-ng window fails to appear or become visible within
             the timeout period.
+        ChiakiFullscreenError
+            If forcing the chiaki-ng window into fullscreen mode fails.
         PS5SettingsIconNotFoundError
             If the PS5 settings icon is not detected on the screen within the
             45.0-second polling timeout (e.g., if a game was left unclosed
             and the console did not boot to the home screen).
-        Exception
-            If the underlying subprocess fails to execute chiaki-ng.
         """
         _launch_chiaki_process()
         hwnd = _find_and_focus_window(window_title=WINDOW_TITLE)
@@ -1032,7 +1147,7 @@ def _(
                 log_context=target_config.log_context,
                 timeout=45.0,
             )
-        except TimeoutError as e:
+        except TemplateMatchTimeoutError as e:
             logger.warning("Settings icon not found. A game may have been left open.")
             raise PS5SettingsIconNotFoundError(
                 "PS5 Settings Icon not found on the home screen."
@@ -1044,7 +1159,7 @@ def _(
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ### Launch CFB Function
+    ### Launch CFB Functions
     #### `launch_cfb_game`
     """)
     return
@@ -1054,38 +1169,37 @@ def _(mo):
 def _(
     Button,
     CFBGameTitleNotFoundError,
+    TemplateConfig,
+    TemplateMatchTimeoutError,
     controller,
     logger,
     poll_for_template_match,
 ):
-    def launch_cfb_game(target_config: _TemplateConfig, max_attempts: int = 10) -> None:
+    def launch_cfb_game(target_config: TemplateConfig) -> None:
         """
-        Navigates the PS5 home screen to find and launch College Football.
+        Navigates the PS5 home screen to find and launch CFB.
 
-        Iterates through the recent games list on the PS5 home screen, opening
-        the "Information" menu for each tile to reliably check the game's icon
-        against the provided template configuration. If found, it launches the
-        game.
+        Iterates through the recent games list on the PS5 home screen, checking
+        each game tile's title against the provided template configuration. If
+        found, it launches the game.
 
         Parameters
         ----------
-        target_config : _TemplateConfig
+        target_config : TemplateConfig
             The configuration object containing the visual template, capture
             region, and logging context used to identify the CFB game title.
-        max_attempts : int, optional
-            The maximum number of game tiles to shift through before failing.
-            Default is 10.
 
         Raises
         ------
         CFBGameTitleNotFoundError
-            If the target game title cannot be located after shifting through the
-            specified maximum number of attempts.
+            If the target game title cannot be located after shifting through
+            the specified maximum number of attempts.
         """
-        for attempt in range(max_attempts):
-            logger.info(f"Evaluating game title {attempt + 1}...")
+        max_attempts = 10
 
-            # Look for a match with the CFB game title template.
+        for attempt in range(max_attempts):
+            logger.debug(f"Evaluating game title {attempt + 1}...")
+
             try:
                 poll_for_template_match(
                     template=target_config.template,
@@ -1093,8 +1207,8 @@ def _(
                     log_context=target_config.log_context,
                     timeout=3.0,
                 )
-            except TimeoutError:
-                logger.info("Target game not found. Shifting to next title...")
+            except TemplateMatchTimeoutError:
+                logger.debug("Target game not found. Shifting to next title...")
                 controller.tap(Button.DPAD_RIGHT)
                 continue
 
@@ -1102,7 +1216,6 @@ def _(
             controller.tap(Button.CROSS)
             return
 
-        logger.error(f"Failed to locate the game after {max_attempts} titles.")
         raise CFBGameTitleNotFoundError(
             f"Target game could not be located after {max_attempts} title shifts."
         )
@@ -1113,9 +1226,301 @@ def _(
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
+    ### Launch Dynasty Functions
+    #### `_poll_main_menu_with_interrupts`
+    #### `launch_dynasty`
+    """)
+    return
+
+
+@app.cell
+def _(
+    Button,
+    CFBMainMenuState,
+    HotfixAppliedError,
+    TemplateConfig,
+    TemplateMatchTimeoutError,
+    camera: "dxcam.DXCamera",
+    controller,
+    is_image_match,
+    logger,
+    time,
+):
+    def _poll_main_menu_with_interrupts(
+        main_menu_config: TemplateConfig,
+        hotfix_overlay_config: TemplateConfig,
+        timeout: float = 60.0,
+    ) -> CFBMainMenuState:
+        """
+        Polls for the main menu while dismissing pop-ups and checking for hotfixes.
+
+        This function actively captures the screen to identify either the top-half
+        main menu template or a hotfix overlay. It continuously taps the circle
+        button to dismiss "Featured News" or "Press any button" prompts until the
+        main menu is found. Once the main menu is detected, it enters a brief
+        stabilization phase to ensure a delayed hotfix overlay does not appear.
+
+        Parameters
+        ----------
+        top_menu_config : TemplateConfig
+            The configuration object containing the visual template and capture
+            region for a stable main menu UI element.
+        hotfix_config : TemplateConfig
+            The configuration object containing the visual template and capture
+            region for the hotfix overlay "Yes/No" button prompt.
+        timeout : float, optional
+            The maximum time in seconds to poll for the menu or hotfix before
+            timing out. Default is 60.0.
+
+        Returns
+        -------
+        MenuState
+            The final evaluated state of the UI, returning either MAIN_MENU or
+            HOTFIX.
+
+        Raises
+        ------
+        TemplateMatchTimeoutError
+            If neither the main menu nor the hotfix overlay is detected within
+            the specified timeout period.
+        """
+        logger.info("Polling for CFB main menu while handling potential pop-ups...")
+
+        camera.start(target_fps=10, region=None)
+        start_time = time.time()
+        main_menu_found = False
+        stabilization_start = 0.0
+
+        try:
+            while time.time() - start_time < timeout:
+                frame = camera.get_latest_frame()
+
+                if frame is not None and frame.max() > 0:
+                    # Check for the hotfix overlay first.
+                    h_left, h_top, h_right, h_bottom = hotfix_overlay_config.region
+                    hotfix_overlay_region = frame[h_top:h_bottom, h_left:h_right]
+                    is_hotfix_overlay, confidence_hotfix_overlay = is_image_match(
+                        frame=hotfix_overlay_region,
+                        template=hotfix_overlay_config.template,
+                    )
+
+                    if is_hotfix_overlay:
+                        logger.warning(
+                            f"Hotfix overlay detected! (Confidence: {confidence_hotfix_overlay:.2f})"
+                        )
+                        return CFBMainMenuState.HOTFIX
+
+                    # Check for the Top-Half Main Menu item.
+                    if not main_menu_found:
+                        m_left, m_top, m_right, m_bottom = main_menu_config.region
+                        main_menu_region = frame[m_top:m_bottom, m_left:m_right]
+                        is_main_menu, confidence_main_menu = is_image_match(
+                            frame=main_menu_region,
+                            template=main_menu_config.template,
+                            confidence_threshold=0.80,  # Lowered for potential dimming
+                        )
+
+                        if is_main_menu:
+                            logger.info(
+                                f"CFB main menu located! (Confidence: {confidence_main_menu:.2f}). Stabilizing..."
+                            )
+                            main_menu_found = True
+                            stabilization_start = time.time()
+
+                # State actions.
+                if main_menu_found:
+                    # Wait 10 seconds to ensure a late hotfix overlay doesn't slide in.
+                    if time.time() - stabilization_start > 10.0:
+                        logger.success(
+                            "CFB main menu stabilized. No hotfix overlays detected."
+                        )
+                        return CFBMainMenuState.MAIN_MENU
+                    # Sync with the background camera thread.
+                    time.sleep(0.1)
+                else:
+                    # Keep mashing CIRCLE to get to the main menu.
+                    controller.tap(Button.CIRCLE, rest_time=1.0)
+
+            raise TemplateMatchTimeoutError(
+                "Failed to reach CFB main menu within the timeout."
+            )
+
+        finally:
+            camera.stop()
+
+    def launch_dynasty(
+        top_menu_config: TemplateConfig, hotfix_config: TemplateConfig
+    ) -> None:
+        """
+        Navigates to the Dynasty mode hub, handling potential hotfixes.
+
+        This function coordinates the transition from the initial load screen
+        to the main menu. It evaluates the current menu state via the polling
+        function. If a hotfix overlay is detected, it selects "No" to dismiss
+        the prompt and raises an error to trigger a clean pipeline restart.
+
+        Parameters
+        ----------
+        top_menu_config : TemplateConfig
+            The configuration object containing the visual template and capture
+            region for the top-half main menu target.
+        hotfix_config : TemplateConfig
+            The configuration object containing the visual template and capture
+            region for the hotfix overlay target.
+
+        Raises
+        ------
+        HotfixAppliedError
+            If a hotfix overlay is detected and dismissed, signaling the error
+            router to restart the game.
+        """
+        logger.info("Executing sequence to reach Dynasty mode...")
+
+        menu_state = _poll_main_menu_with_interrupts(
+            main_menu_config=top_menu_config, hotfix_overlay_config=hotfix_config
+        )
+
+        if menu_state == CFBMainMenuState.HOTFIX:
+            logger.info(
+                "Hotfix overlay detected. Selecting 'No' to dismiss and force restart..."
+            )
+            controller.tap(Button.CROSS, rest_time=2.0)
+
+            # Throw the error so the router can close and relaunch the game.
+            raise HotfixAppliedError("Hotfix dismissed. Game requires a clean restart.")
+
+        logger.info("Entering Dynasty mode...")
+        # Logic to navigate from the top menu item down to Dynasty and click Continue.
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ### Exception Router
+    #### `route_launch_error`
+    """)
+    return
+
+
+@app.cell
+def _(
+    CFBGameTitleNotFoundError,
+    ChiakiExecutableNotFoundError,
+    ChiakiFullscreenError,
+    ChiakiWindowNotFoundError,
+    HotfixAppliedError,
+    LaunchState,
+    PS5SettingsIconNotFoundError,
+    Templates,
+    close_active_game,
+    focus_first_game_tile,
+    focus_welcome_tile,
+    is_home_screen_visible,
+    launch_cfb_game,
+    logger,
+    reset_pipeline_and_ps5,
+    return_to_home_screen,
+):
+    def route_launch_error(
+        e: Exception, attempt: int, max_attempts: int
+    ) -> LaunchState:
+        """
+        Evaluates launch exceptions and returns the next required pipeline state.
+
+        This function inspects the caught exception to determine the appropriate
+        error handling strategy. It executes specific UI recovery sequences or
+        hardware resets based on the exception type, and signals to the main
+        orchestration loop how to proceed.
+
+        Parameters
+        ----------
+        e : Exception
+            The exception caught during the main launch sequence.
+        attempt : int
+            The current attempt number within the main retry loop.
+        max_attempts : int
+            The maximum number of launch attempts allowed before aborting.
+
+        Returns
+        -------
+        LaunchState
+            The explicit control flow signal indicating whether the pipeline
+            recovered, should retry, or must abort.
+        """
+        if isinstance(e, PS5SettingsIconNotFoundError):
+            # Domain: Stream & Console State.
+            logger.info(
+                "PS5 Settings icon not found. Verifying if connection is hung or a game is open..."
+            )
+            return_to_home_screen()
+            focus_welcome_tile()
+
+            if is_home_screen_visible(target_config=Templates.PS5_SETTINGS_ICON):
+                logger.info(
+                    "Stream is active. Initiating recovery sequence for unclosed game..."
+                )
+                focus_first_game_tile()
+                close_active_game()
+                launch_cfb_game(target_config=Templates.CFB_GAME_TITLE)
+                logger.success("Recovery sequence completed successfully!")
+
+                # The game is now launched successfully, signal to proceed to extraction.
+                return LaunchState.RECOVERED
+
+            else:
+                logger.error(
+                    f"Stream is unresponsive (connection failed on attempt {attempt + 1})."
+                )
+                if attempt + 1 < max_attempts:
+                    reset_pipeline_and_ps5()
+                    return LaunchState.RETRY
+                else:
+                    logger.error("Max connection attempts reached. Aborting pipeline.")
+                    return LaunchState.ABORT
+
+        elif isinstance(
+            e,
+            (
+                ChiakiExecutableNotFoundError,
+                ChiakiWindowNotFoundError,
+                ChiakiFullscreenError,
+            ),
+        ):
+            # Domain: Local PC / chiaki-ng Client.
+            logger.exception(
+                "Failed to properly establish the local chiaki-ng environment. Aborting pipeline."
+            )
+            return LaunchState.ABORT
+
+        elif isinstance(e, CFBGameTitleNotFoundError):
+            # Domain: Remote PS5 UI.
+            logger.exception(
+                "Failed to locate the College Football game tile. Aborting pipeline."
+            )
+            return LaunchState.ABORT
+
+        elif isinstance(e, HotfixAppliedError):
+                logger.info("Hotfix overlay was dismissed. Closing and restarting CFB...")
+                return_to_home_screen()
+                close_active_game()
+                return LaunchState.RETRY
+
+        else:
+            # Catch-all for unforeseen errors.
+            logger.exception("An unforeseen error crashed the main launch sequence.")
+            return LaunchState.ABORT
+
+    return (route_launch_error,)
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
     ### Shutdown Pipeline Functions
     #### `_shutdown_chiaki_process`
     #### `shutdown_pipeline`
+    #### `reset_pipeline_and_ps5`
     """)
     return
 
@@ -1130,26 +1535,21 @@ def _(camera: "dxcam.DXCamera", controller, logger, subprocess, time):
         'action on disconnect' (e.g., putting the PS5 in rest mode). If the
         process does not close gracefully within a short timeout, it forcefully
         kills the executable to ensure the stream is disconnected.
-
-        Raises
-        ------
-        Exception
-            If a critical error occurs during the `subprocess.run` executions
-            (the exception is caught and logged internally).
         """
         logger.info("Initiating chiaki-ng shutdown...")
         try:
-            # 1. Attempt graceful shutdown first (no /F flag).
-            # This sends a close signal, allowing the app to run cleanup routines.
+            # Attempt graceful shutdown first (no /F flag).
             logger.debug("Sending graceful close signal to chiaki-ng...")
             subprocess.run(
-                ["taskkill", "/IM", "chiaki.exe"], capture_output=True, text=True
+                ["taskkill", "/IM", "chiaki.exe"],
+                capture_output=True,
+                text=True,
             )
 
             # Give the application time to send the sleep command and close.
             time.sleep(5.0)
 
-            # 2. Follow up with a force kill to ensure it isn't hanging.
+            # Follow up with a force kill to ensure it isn't hanging.
             result = subprocess.run(
                 ["taskkill", "/F", "/T", "/IM", "chiaki.exe"],
                 capture_output=True,
@@ -1170,6 +1570,24 @@ def _(camera: "dxcam.DXCamera", controller, logger, subprocess, time):
                 "Critical error occurred while attempting to terminate chiaki-ng."
             )
 
+    def _reset_virtual_controller() -> None:
+        """Resets the virtual gamepad to a neutral state."""
+        try:
+            controller.gamepad.reset()
+            controller.gamepad.update()
+            logger.debug("Virtual DS4 controller reset to neutral state.")
+        except Exception:
+            logger.exception("Failed to reset virtual controller.")
+
+    def _stop_camera_capture() -> None:
+        """Safely terminates the background dxcam capture thread if active."""
+        try:
+            if camera.is_capturing:
+                camera.stop()
+                logger.debug("Global dxcam capture thread stopped.")
+        except Exception:
+            logger.exception("Failed to stop dxcam globally.")
+
     def shutdown_pipeline() -> None:
         """
         Releases hardware resources and forcefully stops external applications.
@@ -1181,26 +1599,19 @@ def _(camera: "dxcam.DXCamera", controller, logger, subprocess, time):
         """
         logger.info("Executing global pipeline shutdown...")
 
-        # Reset the controller.
-        try:
-            controller.gamepad.reset()
-            controller.gamepad.update()
-            logger.debug("Virtual DS4 controller reset to neutral state.")
-        except Exception:
-            logger.warning("Failed to reset virtual controller.")
-
-        # Stop the dxcam capture.
-        try:
-            if camera.is_capturing:
-                camera.stop()
-                logger.debug("Global dxcam capture thread stopped.")
-        except Exception:
-            logger.warning("Failed to stop dxcam globally.")
-
-        # Kill the remote play stream.
+        _reset_virtual_controller()
+        _stop_camera_capture()
         _shutdown_chiaki_process()
 
-    return (shutdown_pipeline,)
+    def reset_pipeline_and_ps5() -> None:
+        """Shuts down the pipeline and waits for the PS5 to enter rest mode."""
+        logger.info(
+            "Shutting down pipeline and waiting for PS5 to fully enter rest mode before retrying..."
+        )
+        shutdown_pipeline()
+        time.sleep(30.0)
+
+    return reset_pipeline_and_ps5, shutdown_pipeline
 
 
 @app.cell(hide_code=True)
