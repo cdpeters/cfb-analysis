@@ -12,7 +12,7 @@ def _(mo):
     return
 
 
-@app.cell(disabled=True)
+@app.cell
 def _(
     LaunchState,
     MAX_ATTEMPTS_LAUNCH,
@@ -20,6 +20,7 @@ def _(
     close_active_game,
     focus_first_game_tile,
     launch_cfb_game,
+    launch_dynasty,
     launch_ps5,
     logger,
     return_to_home_screen,
@@ -28,6 +29,7 @@ def _(
     time,
 ):
     try:
+        is_stream_active = False
         for attempt in range(MAX_ATTEMPTS_LAUNCH):
             try:
                 # ==== Launch Sequence ======================================
@@ -35,7 +37,7 @@ def _(
                     launch_ps5(target_config=Templates.PS5_SETTINGS_ICON)
                     focus_first_game_tile()
                     launch_cfb_game(target_config=Templates.CFB_GAME_TITLE)
-                    # launch_dynasty()
+                    launch_dynasty()
                     # navigate_to_rosters()
                     logger.success("Main launch sequence completed successfully!")
 
@@ -95,7 +97,7 @@ def _(mo):
     - [ ] Build `launch_dynasty`
     - [ ] handle any errors/failure paths
     #### Build the `navigate_to_rosters` function
-    - [ ] Build `navigate_to_rosters`
+    - [ ] Build `navigate_to_rosters` to get from the dynasty home screen to the "View Rosters" screen.
     #### Optimize timeouts
     - [ ] add timers to everything to see how long the actions are taking.
     - [ ] run the pipeline several times and collect and average the times.
@@ -128,7 +130,7 @@ def _():
     import time
     from enum import Enum, auto
     from pathlib import Path
-    from typing import NamedTuple, ClassVar
+    from typing import NamedTuple
 
     import marimo as mo
     import numpy as np
@@ -514,6 +516,10 @@ def _(Enum, NamedTuple, Path, auto, cv2, dxcam, np, vg):
         RETRY : LaunchState
             Indicates a recoverable hang or hardware failure, requiring
             the orchestrator to restart the main launch loop.
+        GAME_RESTART : LaunchState
+            Indicates that a game launch retry is required. This happens
+            when there is a hotfix notification overlaying the CFB main
+            menu.
         ABORT : LaunchState
             Indicates a fatal OS-level or navigation failure, requiring
             an immediate pipeline shutdown.
@@ -521,6 +527,7 @@ def _(Enum, NamedTuple, Path, auto, cv2, dxcam, np, vg):
 
         RECOVERED = auto()
         RETRY = auto()
+        GAME_RESTART = auto()
         ABORT = auto()
 
     class CFBMainMenuState(Enum):
@@ -541,7 +548,6 @@ def _(Enum, NamedTuple, Path, auto, cv2, dxcam, np, vg):
     return (
         Button,
         CFBGameTitleNotFoundError,
-        CFBMainMenuState,
         ChiakiExecutableNotFoundError,
         ChiakiFullscreenError,
         ChiakiWindowNotFoundError,
@@ -849,7 +855,7 @@ def _(
         finally:
             camera.stop()
 
-    return is_image_match, poll_for_template_match
+    return (poll_for_template_match,)
 
 
 @app.cell(hide_code=True)
@@ -1233,30 +1239,19 @@ def _(mo):
     return
 
 
-@app.cell
-def _(
-    Button,
-    CFBMainMenuState,
-    HotfixAppliedError,
-    TemplateConfig,
-    TemplateMatchTimeoutError,
-    camera: "dxcam.DXCamera",
-    controller,
-    is_image_match,
-    logger,
-    time,
-):
+app._unparsable_cell(
+    """
     def _poll_main_menu_with_interrupts(
         main_menu_config: TemplateConfig,
         hotfix_overlay_config: TemplateConfig,
         timeout: float = 60.0,
     ) -> CFBMainMenuState:
-        """
+        \"\"\"
         Polls for the main menu while dismissing pop-ups and checking for hotfixes.
 
         This function actively captures the screen to identify either the top-half
         main menu template or a hotfix overlay. It continuously taps the circle
-        button to dismiss "Featured News" or "Press any button" prompts until the
+        button to dismiss \"Featured News\" or \"Press any button\" prompts until the
         main menu is found. Once the main menu is detected, it enters a brief
         stabilization phase to ensure a delayed hotfix overlay does not appear.
 
@@ -1267,7 +1262,7 @@ def _(
             region for a stable main menu UI element.
         hotfix_config : TemplateConfig
             The configuration object containing the visual template and capture
-            region for the hotfix overlay "Yes/No" button prompt.
+            region for the hotfix overlay \"Yes/No\" button prompt.
         timeout : float, optional
             The maximum time in seconds to poll for the menu or hotfix before
             timing out. Default is 60.0.
@@ -1283,8 +1278,8 @@ def _(
         TemplateMatchTimeoutError
             If neither the main menu nor the hotfix overlay is detected within
             the specified timeout period.
-        """
-        logger.info("Polling for CFB main menu while handling potential pop-ups...")
+        \"\"\"
+        logger.info(\"Polling for CFB main menu while handling potential pop-ups...\")
 
         camera.start(target_fps=10, region=None)
         start_time = time.time()
@@ -1306,7 +1301,7 @@ def _(
 
                     if is_hotfix_overlay:
                         logger.warning(
-                            f"Hotfix overlay detected! (Confidence: {confidence_hotfix_overlay:.2f})"
+                            f\"Hotfix overlay detected! (Confidence: {confidence_hotfix_overlay:.2f})\"
                         )
                         return CFBMainMenuState.HOTFIX
 
@@ -1322,7 +1317,7 @@ def _(
 
                         if is_main_menu:
                             logger.info(
-                                f"CFB main menu located! (Confidence: {confidence_main_menu:.2f}). Stabilizing..."
+                                f\"CFB main menu located! (Confidence: {confidence_main_menu:.2f}). Stabilizing...\"
                             )
                             main_menu_found = True
                             stabilization_start = time.time()
@@ -1332,7 +1327,7 @@ def _(
                     # Wait 10 seconds to ensure a late hotfix overlay doesn't slide in.
                     if time.time() - stabilization_start > 10.0:
                         logger.success(
-                            "CFB main menu stabilized. No hotfix overlays detected."
+                            \"CFB main menu stabilized. No hotfix overlays detected.\"
                         )
                         return CFBMainMenuState.MAIN_MENU
                     # Sync with the background camera thread.
@@ -1342,21 +1337,21 @@ def _(
                     controller.tap(Button.CIRCLE, rest_time=1.0)
 
             raise TemplateMatchTimeoutError(
-                "Failed to reach CFB main menu within the timeout."
+                \"Failed to reach CFB main menu within the timeout.\"
             )
 
-        finally:
+        finally:f
             camera.stop()
 
     def launch_dynasty(
         top_menu_config: TemplateConfig, hotfix_config: TemplateConfig
     ) -> None:
-        """
+        \"\"\"
         Navigates to the Dynasty mode hub, handling potential hotfixes.
 
         This function coordinates the transition from the initial load screen
         to the main menu. It evaluates the current menu state via the polling
-        function. If a hotfix overlay is detected, it selects "No" to dismiss
+        function. If a hotfix overlay is detected, it selects \"No\" to dismiss
         the prompt and raises an error to trigger a clean pipeline restart.
 
         Parameters
@@ -1373,8 +1368,8 @@ def _(
         HotfixAppliedError
             If a hotfix overlay is detected and dismissed, signaling the error
             router to restart the game.
-        """
-        logger.info("Executing sequence to reach Dynasty mode...")
+        \"\"\"
+        logger.info(\"Executing sequence to reach Dynasty mode...\")
 
         menu_state = _poll_main_menu_with_interrupts(
             main_menu_config=top_menu_config, hotfix_overlay_config=hotfix_config
@@ -1382,16 +1377,18 @@ def _(
 
         if menu_state == CFBMainMenuState.HOTFIX:
             logger.info(
-                "Hotfix overlay detected. Selecting 'No' to dismiss and force restart..."
+                \"Hotfix overlay detected. Selecting 'No' to dismiss and force restart...\"
             )
             controller.tap(Button.CROSS, rest_time=2.0)
 
             # Throw the error so the router can close and relaunch the game.
-            raise HotfixAppliedError("Hotfix dismissed. Game requires a clean restart.")
+            raise HotfixAppliedError(\"Hotfix dismissed. Game requires a clean restart.\")
 
-        logger.info("Entering Dynasty mode...")
+        logger.info(\"Entering Dynasty mode...\")
         # Logic to navigate from the top menu item down to Dynasty and click Continue.
-    return
+    """,
+    name="_"
+)
 
 
 @app.cell(hide_code=True)
@@ -1501,10 +1498,10 @@ def _(
             return LaunchState.ABORT
 
         elif isinstance(e, HotfixAppliedError):
-                logger.info("Hotfix overlay was dismissed. Closing and restarting CFB...")
-                return_to_home_screen()
-                close_active_game()
-                return LaunchState.RETRY
+            logger.info("Hotfix overlay was dismissed. Closing and restarting CFB...")
+            return_to_home_screen()
+            close_active_game()
+            return LaunchState.RETRY
 
         else:
             # Catch-all for unforeseen errors.
