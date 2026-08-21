@@ -1,6 +1,6 @@
 import marimo
 
-__generated_with = "0.23.16"
+__generated_with = "0.24.0"
 app = marimo.App(width="medium")
 
 
@@ -12,90 +12,262 @@ def _(mo):
     return
 
 
-@app.cell
+@app.cell(disabled=True)
 def _(
-    LaunchState,
-    MAX_ATTEMPTS_LAUNCH,
-    Templates,
-    close_active_game,
-    focus_first_game_tile,
-    launch_cfb_game,
-    launch_dynasty,
-    launch_ps5,
+    PipelineState,
+    handle_extract_rosters,
+    handle_initialize_stream,
+    handle_launch_dynasty,
+    handle_launch_game,
+    handle_recover_soft,
+    handle_stabilize_main_menu,
+    handle_verify_stream,
     logger,
-    return_to_home_screen,
-    route_launch_error,
+    reset_pipeline_and_ps5,
     shutdown_pipeline,
-    time,
 ):
-    try:
-        is_stream_active = False
-        for attempt in range(MAX_ATTEMPTS_LAUNCH):
-            try:
-                # ==== Launch Sequence ======================================
-                with logger.contextualize(phase="launch"):
-                    launch_ps5(target_config=Templates.PS5_SETTINGS_ICON)
-                    focus_first_game_tile()
-                    launch_cfb_game(target_config=Templates.CFB_GAME_TITLE)
-                    launch_dynasty()
-                    # navigate_to_rosters()
-                    logger.success("Main launch sequence completed successfully!")
+    def run_pipeline(max_hard_retries: int = 2) -> None:
+        """Orchestrates the state machine loop."""
+        current_state = PipelineState.INITIALIZE_STREAM
+        hard_retries = 0
 
-                # ==== Roster Extraction ====================================
-                with logger.contextualize(phase="extraction"):
-                    # Simulate roster extraction and completion.
-                    logger.info("Initiating data extraction...")
-                    time.sleep(15)
+        # Map the enums directly to their handler functions
+        state_machine = {
+            PipelineState.INITIALIZE_STREAM: handle_initialize_stream,
+            PipelineState.VERIFY_STREAM: handle_verify_stream,
+            PipelineState.LAUNCH_GAME: handle_launch_game,
+            PipelineState.STABILIZE_MAIN_MENU: handle_stabilize_main_menu,
+            PipelineState.LAUNCH_DYNASTY: handle_launch_dynasty,
+            PipelineState.EXTRACT_ROSTERS: handle_extract_rosters,
+            PipelineState.RECOVER_SOFT: handle_recover_soft,
+        }
 
-                # ==== Shut Down Process ====================================
-                with logger.contextualize(phase="shutdown"):
-                    # Move to the PS5 home screen and close the CFB game.
-                    return_to_home_screen()
-                    close_active_game()
-                break
-
-            except Exception as e:
-                # ==== Recovery Routing =====================================
-                with logger.contextualize(phase="recovery"):
-                    # Route the error and determine the next pipeline state.
-                    state = route_launch_error(e, attempt, MAX_ATTEMPTS_LAUNCH)
-
-                if state == LaunchState.RECOVERED:
-                    # ==== Roster Extraction ================================
-                    with logger.contextualize(phase="extraction"):
-                        # The game was recovered and successfully launched. Proceed to extraction.
-                        logger.info("Initiating data extraction after recovery...")
-                        time.sleep(15)
-
-                    # ==== Shut Down Process ================================
-                    with logger.contextualize(phase="shutdown"):
-                        # Move to the PS5 home screen and close the CFB game.
-                        return_to_home_screen()
-                        close_active_game()
-                    break
-
-                elif state == LaunchState.RETRY:
-                    # The stream was hung, and the PS5 was reset. Try to launch again.
+        try:
+            while current_state not in (PipelineState.DONE, PipelineState.SHUTDOWN):
+                # RECOVER_HARD is handled directly in the runner to manage the retry budget.
+                if current_state == PipelineState.RECOVER_HARD:
+                    with logger.contextualize(phase="recover_hard"):
+                        hard_retries += 1
+                        if hard_retries > max_hard_retries:
+                            logger.critical(
+                                f"Max hard retries ({max_hard_retries}) reached. Aborting pipeline."
+                            )
+                            current_state = PipelineState.SHUTDOWN
+                        else:
+                            logger.warning(
+                                f"Executing hard reset (Attempt {hard_retries}/{max_hard_retries})..."
+                            )
+                            reset_pipeline_and_ps5()
+                            current_state = PipelineState.INITIALIZE_STREAM
                     continue
 
-                elif state == LaunchState.ABORT:
-                    # A fatal error occurred or max attempts reached. Break the loop.
-                    break
+                # Execute the current state and transition to the returned state.
+                state_handler = state_machine[current_state]
+                current_state = state_handler()
 
-    finally:
-        with logger.contextualize(phase="shutdown"):
-            shutdown_pipeline()
+        finally:
+            with logger.contextualize(phase="shutdown"):
+                logger.info("Pipeline terminating. Executing final cleanup...")
+                shutdown_pipeline()
+
+    run_pipeline()
     return
 
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
+    ### State Handlers
+    """)
+    return
+
+
+@app.cell
+def _(
+    Button,
+    CFBMainMenuState,
+    PipelineState,
+    Templates,
+    close_active_game,
+    controller,
+    focus_first_game_tile,
+    focus_welcome_tile,
+    is_home_screen_visible,
+    launch_cfb_game,
+    launch_ps5,
+    logger,
+    poll_main_menu_with_interrupts,
+    return_to_home_screen,
+    time,
+):
+    def handle_initialize_stream() -> PipelineState:
+        """Launches chiaki-ng subprocess and ensures full screen mode."""
+        with logger.contextualize(phase="initialize_stream"):
+            logger.info("Entering State: INITIALIZE_STREAM")
+
+            try:
+                launch_ps5()
+                return PipelineState.VERIFY_STREAM
+            except Exception as e:
+                logger.error(f"Stream initialization failed: {e}")
+                return PipelineState.RECOVER_HARD
+
+    def handle_verify_stream() -> PipelineState:
+        """Diagnoses stream health and handles unclosed game states."""
+        with logger.contextualize(phase="verify_stream"):
+            logger.info("Entering State: VERIFY_STREAM")
+
+            # Check to see if we're already on the PS5 home screen.
+            if is_home_screen_visible(target_config=Templates.PS5_SETTINGS_ICON):
+                logger.info("Stream active. Clean home screen detected.")
+                focus_first_game_tile()
+                return PipelineState.LAUNCH_GAME
+
+            # Assume an unclosed game: return to the PS5 home screen and focus the welcome tile for a PS5
+            # settings icon template match attempt.
+            logger.warning(
+                "Home screen not visible. Attempting to exit potential unclosed game..."
+            )
+            return_to_home_screen()
+            focus_welcome_tile()
+
+            if is_home_screen_visible(target_config=Templates.PS5_SETTINGS_ICON):
+                logger.info("Recovered to home screen. Closing the unclosed game...")
+                focus_first_game_tile()
+                close_active_game()
+                return PipelineState.LAUNCH_GAME
+
+            logger.error("Stream is completely unresponsive.")
+            return PipelineState.RECOVER_HARD
+
+    def handle_launch_game() -> PipelineState:
+        """Locates and launches CFB from the PS5 home screen."""
+        with logger.contextualize(phase="launch_game"):
+            logger.info("Entering State: LAUNCH_GAME")
+
+            try:
+                launch_cfb_game(target_config=Templates.CFB_GAME_TITLE)
+                return PipelineState.STABILIZE_MAIN_MENU
+            except Exception as e:
+                logger.error(f"Failed to launch game: {e}")
+                return PipelineState.RECOVER_HARD
+
+    def handle_stabilize_main_menu() -> PipelineState:
+        """Handles post-launch loading screens, pop-ups, and hotfixes."""
+        with logger.contextualize(phase="stabilize_menu"):
+            logger.info("Entering State: STABILIZE_MAIN_MENU")
+
+            try:
+                main_menu_state = poll_main_menu_with_interrupts(
+                    main_menu_config=Templates.CFB_MAIN_MENU_TOP,
+                    hotfix_overlay_config=Templates.CFB_HOTFIX_OVERLAY,
+                )
+
+                if main_menu_state == CFBMainMenuState.HOTFIX:
+                    logger.warning("Hotfix detected. Selecting 'No' to dismiss...")
+                    controller.tap(Button.CROSS, rest_time=2.0)
+                    return PipelineState.RECOVER_SOFT
+
+                logger.success("Main menu stabilized.")
+                return PipelineState.LAUNCH_DYNASTY
+
+            except Exception as e:
+                logger.error(f"Menu stabilization failed: {e}")
+                return PipelineState.RECOVER_HARD
+
+    def handle_launch_dynasty() -> PipelineState:
+        """Navigates from a stable main menu into the Dynasty mode save."""
+        with logger.contextualize(phase="launch_dynasty"):
+            logger.info("Entering State: LAUNCH_DYNASTY")
+
+            try:
+                # 1. Navigate down to the 'Dynasty' option
+                logger.debug("Navigating to Dynasty tile...")
+                controller.tap(Button.DPAD_DOWN, rest_time=0.5)
+                # ... add remaining D-pad movements ...
+                controller.tap(Button.CROSS, rest_time=2.0)
+
+                # 2. Select 'Continue' or load specific file
+                logger.debug("Selecting save file...")
+                controller.tap(Button.CROSS, rest_time=5.0)  # Wait for load
+
+                # Optional: Add a quick visual verify here to confirm we are inside the Dynasty hub
+
+                return PipelineState.EXTRACT_ROSTERS
+
+            except Exception as e:
+                logger.error(f"Failed to launch Dynasty mode: {e}")
+                return PipelineState.RECOVER_HARD
+
+    def handle_extract_rosters() -> PipelineState:
+        """Executes the core data extraction sequence."""
+        with logger.contextualize(phase="extract_rosters"):
+            logger.info("Entering State: EXTRACT_ROSTERS")
+
+            # ... Simulate extraction ...
+            time.sleep(15)
+            logger.success("Data extraction complete!")
+            return PipelineState.DONE
+
+    def handle_recover_soft() -> PipelineState:
+        """Closes the game to clear state, leaving the stream active."""
+        with logger.contextualize(phase="recover_soft"):
+            logger.info("Entering State: RECOVER_SOFT")
+
+            try:
+                return_to_home_screen()
+                close_active_game()
+                # The cursor is still on the CFB game tile so we can move directly to `LAUNCH_GAME`.
+                return PipelineState.LAUNCH_GAME
+            except Exception as e:
+                logger.error(f"Soft recovery failed: {e}")
+                return PipelineState.RECOVER_HARD
+
+    return (
+        handle_extract_rosters,
+        handle_initialize_stream,
+        handle_launch_dynasty,
+        handle_launch_game,
+        handle_recover_soft,
+        handle_stabilize_main_menu,
+        handle_verify_stream,
+    )
+
+
+@app.cell
+def _(Enum, auto):
+    class PipelineState(Enum):
+        """States defining the distinct phases of the extraction pipeline."""
+
+        INITIALIZE_STREAM = auto()
+        VERIFY_STREAM = auto()
+        LAUNCH_GAME = auto()
+        STABILIZE_MAIN_MENU = auto()
+        LAUNCH_DYNASTY = auto()
+        EXTRACT_ROSTERS = auto()
+        RECOVER_SOFT = auto()
+        RECOVER_HARD = auto()
+        SHUTDOWN = auto()
+        DONE = auto()
+
+    return (PipelineState,)
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
     ### To-Do
-    #### Build the `launch_dynasty` function
-    - `launch_dynasty` needs to make it to CFB's main menu screen, close the possible "featured news" popup, look for the possible "hotfix update" overlay and address that, then find the "Dynasty" option on the main menu and click it, and then find the "Continue" option and click it.
-    - [ ] Build `launch_dynasty`
-    - [ ] handle any errors/failure paths
+    #### Check `poll_main_menu_with_interrupts`
+    - [ ] Review the logic and make sure it is correct.
+    #### Main Menu, Featured News Popup, and Hotfix Overlay Templates
+    - [x] Capture main menu template image and choose the region for matching.
+    - [x] Capture featured news popup circle button template image and choose the region for matching.
+    - [ ] Capture hotfix overlay template image and choose the region for matching.
+    #### Complete the `handle_launch_dynasty` function
+    - [ ] Complete the button sequence to get to the list of dynasties.
+    - [ ] Use OCR to select the dynasty by name.
+    - [ ] Create semantic wrapper functions for easier readability.
+    - [ ] Handle the possibility that the connection to EA Servers has been lost and you need to reconnect via `Button.R2` at the main menu.
     #### Build the `navigate_to_rosters` function
     - [ ] Build `navigate_to_rosters` to get from the dynasty home screen to the "View Rosters" screen.
     #### Optimize timeouts
@@ -364,8 +536,16 @@ def _(Enum, NamedTuple, Path, auto, cv2, dxcam, np, vg):
         """
 
         TEMPLATES_DIR = _PROJECT_DIR / "assets" / "templates"
+        # PS5 UI template paths.
         PS5_SETTINGS_ICON = TEMPLATES_DIR / "ps5_settings_icon.png"
         CFB_GAME_TITLE = TEMPLATES_DIR / "cfb_game_title.png"
+        # CFB UI template paths.
+        FEATURED_NEWS_CLOSE_ICON = TEMPLATES_DIR / "featured_news_close_icon.png"
+        CFB_LOGO = TEMPLATES_DIR / "cfb_logo.png"
+        DYNASTY_OPTION = TEMPLATES_DIR / "dynasty_option.png"
+        SIGN_IN_TO_EA_ICON = TEMPLATES_DIR / "sign_in_to_EA_icon.png"
+        CONNECTED_TO_EA_ICON = TEMPLATES_DIR / "connected_to_EA_icon.png"
+        HOTFIX_OVERLAY_YES_OPTION = TEMPLATES_DIR / "hotfix_overlay_yes_option.png"
 
     class TemplateConfig(NamedTuple):
         """
@@ -413,6 +593,36 @@ def _(Enum, NamedTuple, Path, auto, cv2, dxcam, np, vg):
             template=_load_template(_TemplatePaths.CFB_GAME_TITLE),
             region=(330, 225, 880, 300),
             log_context="CFB Game Title",
+        )
+        FEATURED_NEWS_CLOSE_ICON = TemplateConfig(
+            template=_load_template(_TemplatePaths.FEATURED_NEWS_CLOSE_ICON),
+            region=(161, 1020, 269, 1072),
+            log_context="Featured News Close Icon",
+        )
+        CFB_LOGO = TemplateConfig(
+            template=_load_template(_TemplatePaths.CFB_LOGO),
+            region=(1620, 1018, 1880, 1077),
+            log_context="CFB Logo",
+        )
+        DYNASTY_OPTION = TemplateConfig(
+            template=_load_template(_TemplatePaths.DYNASTY_OPTION),
+            region=(228, 690, 518, 770),
+            log_context="Dynasty Option",
+        )
+        SIGN_IN_TO_EA_ICON = TemplateConfig(
+            template=_load_template(_TemplatePaths.SIGN_IN_TO_EA_ICON),
+            region=(161, 1020, 325, 1073),
+            log_context="Sign In To EA Icon",
+        )
+        CONNECTED_TO_EA_ICON = TemplateConfig(
+            template=_load_template(_TemplatePaths.CONNECTED_TO_EA_ICON),
+            region=(1120, 1020, 1400, 1075),
+            log_context="Connected To EA Icon",
+        )
+        HOTFIX_OVERLAY_YES_OPTION = TemplateConfig(
+            template=_load_template(_TemplatePaths.HOTFIX_OVERLAY_YES_OPTION),
+            region=(640, 520, 1280, 1030),
+            log_context="Hotfix Overlay Yes Option",
         )
 
     class InputType(Enum):
@@ -503,33 +713,6 @@ def _(Enum, NamedTuple, Path, auto, cv2, dxcam, np, vg):
         PS = (InputType.SPECIAL, vg.DS4_SPECIAL_BUTTONS.DS4_SPECIAL_BUTTON_PS)
         OPTIONS = (InputType.STANDARD, vg.DS4_BUTTONS.DS4_BUTTON_OPTIONS)
 
-    class LaunchState(Enum):
-        """
-        Represents the pipeline state after error evaluation.
-
-        Attributes
-        ----------
-        RECOVERED : LaunchState
-            Indicates the error was handled, the game was successfully
-            launched during recovery, and the pipeline should proceed
-            directly to extraction.
-        RETRY : LaunchState
-            Indicates a recoverable hang or hardware failure, requiring
-            the orchestrator to restart the main launch loop.
-        GAME_RESTART : LaunchState
-            Indicates that a game launch retry is required. This happens
-            when there is a hotfix notification overlaying the CFB main
-            menu.
-        ABORT : LaunchState
-            Indicates a fatal OS-level or navigation failure, requiring
-            an immediate pipeline shutdown.
-        """
-
-        RECOVERED = auto()
-        RETRY = auto()
-        GAME_RESTART = auto()
-        ABORT = auto()
-
     class CFBMainMenuState(Enum):
         """
         Enum tracking the identified state of the CFB game main menu.
@@ -548,14 +731,12 @@ def _(Enum, NamedTuple, Path, auto, cv2, dxcam, np, vg):
     return (
         Button,
         CFBGameTitleNotFoundError,
+        CFBMainMenuState,
         ChiakiExecutableNotFoundError,
         ChiakiFullscreenError,
         ChiakiWindowNotFoundError,
         HotfixAppliedError,
         InputType,
-        LaunchState,
-        MAX_ATTEMPTS_LAUNCH,
-        PS5SettingsIconNotFoundError,
         TemplateConfig,
         TemplateMatchTimeoutError,
         Templates,
@@ -855,7 +1036,7 @@ def _(
         finally:
             camera.stop()
 
-    return (poll_for_template_match,)
+    return is_image_match, poll_for_template_match
 
 
 @app.cell(hide_code=True)
@@ -959,13 +1140,9 @@ def _(
     ChiakiExecutableNotFoundError,
     ChiakiFullscreenError,
     ChiakiWindowNotFoundError,
-    PS5SettingsIconNotFoundError,
     Path,
-    TemplateConfig,
-    TemplateMatchTimeoutError,
     WINDOW_TITLE,
     logger,
-    poll_for_template_match,
     subprocess,
     time,
     win32api,
@@ -1039,7 +1216,7 @@ def _(
             f"Window '{window_title}' failed to launch within the timeout period."
         )
 
-    def _ensure_fullscreen(hwnd: int, max_attempts: int = 3) -> None:
+    def _ensure_fullscreen(hwnd: int, max_attempts: int = 4) -> None:
         """
         Verifies the window is in true full screen and attempts to correct it
         if not.
@@ -1109,55 +1286,11 @@ def _(
 
         raise ChiakiFullscreenError("chiaki-ng fullscreen correction failed.")
 
-    def launch_ps5(target_config: TemplateConfig) -> None:
-        """
-        Executes the startup sequence to establish a remote play connection.
-
-        This function coordinates the initial pipeline steps: it launches the
-        chiaki-ng client, forces the application window to the foreground, and
-        polls the capture region until the PS5 home screen is verified. Upon
-        successful completion, the stream is active and ready for virtual
-        controller inputs.
-
-        Parameters
-        ----------
-        target_config : TemplateConfig
-            The configuration object containing the visual template, capture
-            region, and logging context used to verify the PS5 home screen.
-
-        Raises
-        ------
-        ChiakiExecutableNotFoundError
-            If the chiaki-ng executable cannot be found during the launch
-            process.
-        ChiakiWindowNotFoundError
-            If the chiaki-ng window fails to appear or become visible within
-            the timeout period.
-        ChiakiFullscreenError
-            If forcing the chiaki-ng window into fullscreen mode fails.
-        PS5SettingsIconNotFoundError
-            If the PS5 settings icon is not detected on the screen within the
-            45.0-second polling timeout (e.g., if a game was left unclosed
-            and the console did not boot to the home screen).
-        """
+    def launch_ps5() -> None:
+        """Needs documentation."""
         _launch_chiaki_process()
         hwnd = _find_and_focus_window(window_title=WINDOW_TITLE)
-        # Force full screen before initiating any template matching
         _ensure_fullscreen(hwnd)
-
-        try:
-            # Check to see if the PS5 homescreen is showing.
-            poll_for_template_match(
-                template=target_config.template,
-                region=target_config.region,
-                log_context=target_config.log_context,
-                timeout=45.0,
-            )
-        except TemplateMatchTimeoutError as e:
-            logger.warning("Settings icon not found. A game may have been left open.")
-            raise PS5SettingsIconNotFoundError(
-                "PS5 Settings Icon not found on the home screen."
-            ) from e
 
     return (launch_ps5,)
 
@@ -1239,19 +1372,30 @@ def _(mo):
     return
 
 
-app._unparsable_cell(
-    """
-    def _poll_main_menu_with_interrupts(
+@app.cell
+def _(
+    Button,
+    CFBMainMenuState,
+    HotfixAppliedError,
+    TemplateConfig,
+    TemplateMatchTimeoutError,
+    camera: "dxcam.DXCamera",
+    controller,
+    is_image_match,
+    logger,
+    time,
+):
+    def poll_main_menu_with_interrupts(
         main_menu_config: TemplateConfig,
         hotfix_overlay_config: TemplateConfig,
         timeout: float = 60.0,
     ) -> CFBMainMenuState:
-        \"\"\"
+        """
         Polls for the main menu while dismissing pop-ups and checking for hotfixes.
 
         This function actively captures the screen to identify either the top-half
         main menu template or a hotfix overlay. It continuously taps the circle
-        button to dismiss \"Featured News\" or \"Press any button\" prompts until the
+        button to dismiss "Featured News" or "Press any button" prompts until the
         main menu is found. Once the main menu is detected, it enters a brief
         stabilization phase to ensure a delayed hotfix overlay does not appear.
 
@@ -1262,14 +1406,14 @@ app._unparsable_cell(
             region for a stable main menu UI element.
         hotfix_config : TemplateConfig
             The configuration object containing the visual template and capture
-            region for the hotfix overlay \"Yes/No\" button prompt.
+            region for the hotfix overlay "Yes/No" button prompt.
         timeout : float, optional
             The maximum time in seconds to poll for the menu or hotfix before
             timing out. Default is 60.0.
 
         Returns
         -------
-        MenuState
+        CFBMainMenuState
             The final evaluated state of the UI, returning either MAIN_MENU or
             HOTFIX.
 
@@ -1278,8 +1422,8 @@ app._unparsable_cell(
         TemplateMatchTimeoutError
             If neither the main menu nor the hotfix overlay is detected within
             the specified timeout period.
-        \"\"\"
-        logger.info(\"Polling for CFB main menu while handling potential pop-ups...\")
+        """
+        logger.info("Polling for CFB main menu while handling potential pop-ups...")
 
         camera.start(target_fps=10, region=None)
         start_time = time.time()
@@ -1301,7 +1445,7 @@ app._unparsable_cell(
 
                     if is_hotfix_overlay:
                         logger.warning(
-                            f\"Hotfix overlay detected! (Confidence: {confidence_hotfix_overlay:.2f})\"
+                            f"Hotfix overlay detected! (Confidence: {confidence_hotfix_overlay:.2f})"
                         )
                         return CFBMainMenuState.HOTFIX
 
@@ -1317,7 +1461,7 @@ app._unparsable_cell(
 
                         if is_main_menu:
                             logger.info(
-                                f\"CFB main menu located! (Confidence: {confidence_main_menu:.2f}). Stabilizing...\"
+                                f"CFB main menu located! (Confidence: {confidence_main_menu:.2f}). Stabilizing..."
                             )
                             main_menu_found = True
                             stabilization_start = time.time()
@@ -1327,7 +1471,7 @@ app._unparsable_cell(
                     # Wait 10 seconds to ensure a late hotfix overlay doesn't slide in.
                     if time.time() - stabilization_start > 10.0:
                         logger.success(
-                            \"CFB main menu stabilized. No hotfix overlays detected.\"
+                            "CFB main menu stabilized. No hotfix overlays detected."
                         )
                         return CFBMainMenuState.MAIN_MENU
                     # Sync with the background camera thread.
@@ -1337,21 +1481,21 @@ app._unparsable_cell(
                     controller.tap(Button.CIRCLE, rest_time=1.0)
 
             raise TemplateMatchTimeoutError(
-                \"Failed to reach CFB main menu within the timeout.\"
+                "Failed to reach CFB main menu within the timeout."
             )
 
-        finally:f
+        finally:
             camera.stop()
 
     def launch_dynasty(
         top_menu_config: TemplateConfig, hotfix_config: TemplateConfig
     ) -> None:
-        \"\"\"
+        """
         Navigates to the Dynasty mode hub, handling potential hotfixes.
 
         This function coordinates the transition from the initial load screen
         to the main menu. It evaluates the current menu state via the polling
-        function. If a hotfix overlay is detected, it selects \"No\" to dismiss
+        function. If a hotfix overlay is detected, it selects "No" to dismiss
         the prompt and raises an error to trigger a clean pipeline restart.
 
         Parameters
@@ -1368,147 +1512,25 @@ app._unparsable_cell(
         HotfixAppliedError
             If a hotfix overlay is detected and dismissed, signaling the error
             router to restart the game.
-        \"\"\"
-        logger.info(\"Executing sequence to reach Dynasty mode...\")
+        """
+        logger.info("Executing sequence to reach Dynasty mode...")
 
-        menu_state = _poll_main_menu_with_interrupts(
+        menu_state = poll_main_menu_with_interrupts(
             main_menu_config=top_menu_config, hotfix_overlay_config=hotfix_config
         )
 
         if menu_state == CFBMainMenuState.HOTFIX:
             logger.info(
-                \"Hotfix overlay detected. Selecting 'No' to dismiss and force restart...\"
+                "Hotfix overlay detected. Selecting 'No' to dismiss and force restart..."
             )
             controller.tap(Button.CROSS, rest_time=2.0)
 
             # Throw the error so the router can close and relaunch the game.
-            raise HotfixAppliedError(\"Hotfix dismissed. Game requires a clean restart.\")
+            raise HotfixAppliedError("Hotfix dismissed. Game requires a clean restart.")
 
-        logger.info(\"Entering Dynasty mode...\")
+        logger.info("Entering Dynasty mode...")
         # Logic to navigate from the top menu item down to Dynasty and click Continue.
-    """,
-    name="_"
-)
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    ### Exception Router
-    #### `route_launch_error`
-    """)
-    return
-
-
-@app.cell
-def _(
-    CFBGameTitleNotFoundError,
-    ChiakiExecutableNotFoundError,
-    ChiakiFullscreenError,
-    ChiakiWindowNotFoundError,
-    HotfixAppliedError,
-    LaunchState,
-    PS5SettingsIconNotFoundError,
-    Templates,
-    close_active_game,
-    focus_first_game_tile,
-    focus_welcome_tile,
-    is_home_screen_visible,
-    launch_cfb_game,
-    logger,
-    reset_pipeline_and_ps5,
-    return_to_home_screen,
-):
-    def route_launch_error(
-        e: Exception, attempt: int, max_attempts: int
-    ) -> LaunchState:
-        """
-        Evaluates launch exceptions and returns the next required pipeline state.
-
-        This function inspects the caught exception to determine the appropriate
-        error handling strategy. It executes specific UI recovery sequences or
-        hardware resets based on the exception type, and signals to the main
-        orchestration loop how to proceed.
-
-        Parameters
-        ----------
-        e : Exception
-            The exception caught during the main launch sequence.
-        attempt : int
-            The current attempt number within the main retry loop.
-        max_attempts : int
-            The maximum number of launch attempts allowed before aborting.
-
-        Returns
-        -------
-        LaunchState
-            The explicit control flow signal indicating whether the pipeline
-            recovered, should retry, or must abort.
-        """
-        if isinstance(e, PS5SettingsIconNotFoundError):
-            # Domain: Stream & Console State.
-            logger.info(
-                "PS5 Settings icon not found. Verifying if connection is hung or a game is open..."
-            )
-            return_to_home_screen()
-            focus_welcome_tile()
-
-            if is_home_screen_visible(target_config=Templates.PS5_SETTINGS_ICON):
-                logger.info(
-                    "Stream is active. Initiating recovery sequence for unclosed game..."
-                )
-                focus_first_game_tile()
-                close_active_game()
-                launch_cfb_game(target_config=Templates.CFB_GAME_TITLE)
-                logger.success("Recovery sequence completed successfully!")
-
-                # The game is now launched successfully, signal to proceed to extraction.
-                return LaunchState.RECOVERED
-
-            else:
-                logger.error(
-                    f"Stream is unresponsive (connection failed on attempt {attempt + 1})."
-                )
-                if attempt + 1 < max_attempts:
-                    reset_pipeline_and_ps5()
-                    return LaunchState.RETRY
-                else:
-                    logger.error("Max connection attempts reached. Aborting pipeline.")
-                    return LaunchState.ABORT
-
-        elif isinstance(
-            e,
-            (
-                ChiakiExecutableNotFoundError,
-                ChiakiWindowNotFoundError,
-                ChiakiFullscreenError,
-            ),
-        ):
-            # Domain: Local PC / chiaki-ng Client.
-            logger.exception(
-                "Failed to properly establish the local chiaki-ng environment. Aborting pipeline."
-            )
-            return LaunchState.ABORT
-
-        elif isinstance(e, CFBGameTitleNotFoundError):
-            # Domain: Remote PS5 UI.
-            logger.exception(
-                "Failed to locate the College Football game tile. Aborting pipeline."
-            )
-            return LaunchState.ABORT
-
-        elif isinstance(e, HotfixAppliedError):
-            logger.info("Hotfix overlay was dismissed. Closing and restarting CFB...")
-            return_to_home_screen()
-            close_active_game()
-            return LaunchState.RETRY
-
-        else:
-            # Catch-all for unforeseen errors.
-            logger.exception("An unforeseen error crashed the main launch sequence.")
-            return LaunchState.ABORT
-
-    return (route_launch_error,)
+    return (poll_main_menu_with_interrupts,)
 
 
 @app.cell(hide_code=True)
