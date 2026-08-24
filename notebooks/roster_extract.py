@@ -85,7 +85,7 @@ def _(mo):
 @app.cell
 def _(
     Button,
-    CFBMainMenuState,
+    MainMenuPollOutcome,
     PipelineState,
     Templates,
     close_active_game,
@@ -159,11 +159,15 @@ def _(
 
             try:
                 main_menu_state = poll_main_menu_with_interrupts(
-                    main_menu_config=Templates.CFB_MAIN_MENU_TOP,
-                    hotfix_overlay_config=Templates.CFB_HOTFIX_OVERLAY,
+                    cfb_logo_config=Templates.CFB_LOGO,
+                    dynasty_config=Templates.DYNASTY_OPTION,
+                    hotfix_overlay_config=Templates.HOTFIX_OVERLAY_YES_OPTION,
+                    sign_in_to_EA_config=Templates.SIGN_IN_TO_EA_ICON,
+                    connected_to_EA_config=Templates.CONNECTED_TO_EA_ICON,
+                    featured_news_config=Templates.FEATURED_NEWS_CLOSE_ICON,
                 )
 
-                if main_menu_state == CFBMainMenuState.HOTFIX:
+                if main_menu_state == MainMenuPollOutcome.HOTFIX_DETECTED:
                     logger.warning("Hotfix detected. Selecting 'No' to dismiss...")
                     controller.tap(Button.CROSS, rest_time=2.0)
                     return PipelineState.RECOVER_SOFT
@@ -259,10 +263,6 @@ def _(mo):
     ### To-Do
     #### Check `poll_main_menu_with_interrupts`
     - [ ] Review the logic and make sure it is correct.
-    #### Main Menu, Featured News Popup, and Hotfix Overlay Templates
-    - [x] Capture main menu template image and choose the region for matching.
-    - [x] Capture featured news popup circle button template image and choose the region for matching.
-    - [ ] Capture hotfix overlay template image and choose the region for matching.
     #### Complete the `handle_launch_dynasty` function
     - [ ] Complete the button sequence to get to the list of dynasties.
     - [ ] Use OCR to select the dynasty by name.
@@ -306,6 +306,7 @@ def _():
 
     import marimo as mo
     import numpy as np
+    import numpy.typing as npt
     import vgamepad as vg
     from loguru import logger
     from PIL import Image
@@ -443,6 +444,7 @@ def _():
         logger,
         mo,
         np,
+        npt,
         subprocess,
         time,
         vg,
@@ -461,13 +463,17 @@ def _(mo):
 
 
 @app.cell
-def _(Enum, NamedTuple, Path, auto, cv2, dxcam, np, vg):
+def _(Enum, NamedTuple, Path, auto, cv2, dxcam, np, npt, vg):
+    type ImageArray = npt.NDArray[np.uint8]
+    type Region = tuple[int, int, int, int]  # [left, top, right, bottom]
+
     MAX_ATTEMPTS_LAUNCH = 2
     WINDOW_TITLE = "chiaki-ng"
-    camera: dxcam.DXCamera = dxcam.create(  # ty: ignore
+    _PROJECT_DIR = Path.cwd().parent
+
+    camera: dxcam.DXCamera = dxcam.create(  # ty: ignore[unresolved-attribute]
         device_idx=0, output_idx=0, output_color="BGRA"
     )
-    _PROJECT_DIR = Path.cwd().parent
 
     class TemplateFileNotFoundError(Exception):
         """Raised when the image template file is not found."""
@@ -490,10 +496,13 @@ def _(Enum, NamedTuple, Path, auto, cv2, dxcam, np, vg):
     class CFBGameTitleNotFoundError(Exception):
         """Raised when the CFB game title is not found on the PS5 home screen."""
 
-    class HotfixAppliedError(Exception):
-        """Raised when a hotfix is detected and dismissed, requiring a clean game restart."""
+    class MainMenuPollingTimeoutError(Exception):
+        """Raised when main-menu polling exceeds its overall deadline."""
 
-    def _load_template(path: Path) -> np.ndarray:
+    class EAConnectionTimeoutError(Exception):
+        """Raised when reconnection to EA servers exceeds its allowed timeout."""
+
+    def _load_template(path: Path) -> ImageArray:
         """
         Loads a grayscale image from disk and validates it.
 
@@ -563,8 +572,8 @@ def _(Enum, NamedTuple, Path, auto, cv2, dxcam, np, vg):
             in logging output.
         """
 
-        template: np.ndarray
-        region: tuple[int, int, int, int]  # (left, top, right, bottom)
+        template: ImageArray
+        region: Region
         log_context: str
 
     class Templates:
@@ -654,7 +663,16 @@ def _(Enum, NamedTuple, Path, auto, cv2, dxcam, np, vg):
 
         This enumeration maps readable button names to their corresponding
         input categories and vgamepad bitmasks. The `.value` property of each
-        member returns a `tuple[InputType, int]`.
+        member returns a:
+
+        ```python
+        tuple[
+            InputType,
+            vg.DS4_BUTTONS
+            | vg.DS4_SPECIAL_BUTTONS
+            | vg.DS4_DPAD_DIRECTIONS,
+        ]
+        ```
 
         Attributes
         ----------
@@ -713,36 +731,66 @@ def _(Enum, NamedTuple, Path, auto, cv2, dxcam, np, vg):
         PS = (InputType.SPECIAL, vg.DS4_SPECIAL_BUTTONS.DS4_SPECIAL_BUTTON_PS)
         OPTIONS = (InputType.STANDARD, vg.DS4_BUTTONS.DS4_BUTTON_OPTIONS)
 
-    class CFBMainMenuState(Enum):
+    class MainMenuPollOutcome(Enum):
         """
         Enum tracking the identified state of the CFB game main menu.
 
         Attributes
         ----------
-        MAIN_MENU : auto
+        MAIN_MENU_CLEAN : auto
             Indicates the main menu has been successfully identified and stabilized.
-        HOTFIX : auto
+        HOTFIX_DETECTED : auto
             Indicates a hotfix overlay has been detected on the screen.
         """
 
-        MAIN_MENU = auto()
+        MAIN_MENU_CLEAN = auto()
+        HOTFIX_DETECTED = auto()
+
+    class MenuEvent(Enum):
+        """Visual states that can be detected while reaching the CFB main menu."""
+
         HOTFIX = auto()
+        EA_SIGN_IN = auto()
+        FEATURED_NEWS = auto()
+        DYNASTY_VISIBLE = auto()
+        NONE = auto()
 
     return (
         Button,
         CFBGameTitleNotFoundError,
-        CFBMainMenuState,
         ChiakiExecutableNotFoundError,
         ChiakiFullscreenError,
         ChiakiWindowNotFoundError,
-        HotfixAppliedError,
+        EAConnectionTimeoutError,
+        ImageArray,
         InputType,
+        MainMenuPollOutcome,
+        MainMenuPollingTimeoutError,
+        MenuEvent,
+        Region,
         TemplateConfig,
         TemplateMatchTimeoutError,
         Templates,
         WINDOW_TITLE,
         camera,
     )
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ### Utility Functions
+    """)
+    return
+
+
+@app.cell
+def _(ImageArray):
+    def is_valid_frame(frame: ImageArray | None) -> bool:
+        """Return whether a captured frame contains usable image data."""
+        return frame is not None and bool(frame.max() > 0)
+
+    return (is_valid_frame,)
 
 
 @app.cell(hide_code=True)
@@ -909,15 +957,17 @@ def _(mo):
 
 @app.cell
 def _(
+    ImageArray,
+    Region,
     TemplateMatchTimeoutError,
     camera: "dxcam.DXCamera",
     cv2,
+    is_valid_frame,
     logger,
-    np,
     time,
 ):
     def is_image_match(
-        frame: np.ndarray, template: np.ndarray, confidence_threshold: float = 0.90
+        frame: ImageArray, template: ImageArray, confidence_threshold: float = 0.90
     ) -> tuple[bool, float]:
         """
         Evaluates a single image frame against a template using OpenCV.
@@ -952,8 +1002,8 @@ def _(
         return max_val > confidence_threshold, max_val
 
     def poll_for_template_match(
-        template: np.ndarray,
-        region: tuple[int, int, int, int],
+        template: ImageArray,
+        region: Region,
         log_context: str,
         timeout: float = 5.0,
         confidence_threshold: float = 0.90,
@@ -995,16 +1045,14 @@ def _(
         )
         # Start a background camera thread to continuously capture frames.
         camera.start(target_fps=10, region=region)
-        start_time = time.time()
-
-        # Use try-finally block to ensure the background camera thread is
-        # stopped even if an error occurs.
+        deadline = time.monotonic() + timeout
         highest_confidence_seen = 0.0
-        try:
-            while time.time() - start_time < timeout:
-                frame: np.ndarray | None = camera.get_latest_frame()
 
-                if frame is not None and frame.max() > 0:
+        try:
+            while time.monotonic() < deadline:
+                frame = camera.get_latest_frame()
+
+                if is_valid_frame(frame=frame):
                     is_match, confidence = is_image_match(
                         frame=frame,
                         template=template,
@@ -1192,15 +1240,16 @@ def _(
             If the window is not found or visible within the timeout period.
         """
         timeout = 30.0
-        start_time = time.time()
+        start = time.monotonic()
+        deadline = start + timeout
 
         logger.info(f"Polling OS for window '{window_title}' (Timeout: {timeout}s)...")
 
-        while time.time() - start_time < timeout:
+        while time.monotonic() < deadline:
             hwnd = win32gui.FindWindow(None, window_title)
 
             if hwnd and win32gui.IsWindowVisible(hwnd):
-                elapsed = round(time.time() - start_time, 2)
+                elapsed = round(time.monotonic() - start, 2)
                 logger.success(
                     f"Window '{window_title}' found and visible after {elapsed}s."
                 )
@@ -1345,6 +1394,7 @@ def _(
                     region=target_config.region,
                     log_context=target_config.log_context,
                     timeout=3.0,
+                    confidence_threshold=0.87,
                 )
             except TemplateMatchTimeoutError:
                 logger.debug("Target game not found. Shifting to next title...")
@@ -1366,7 +1416,7 @@ def _(
 def _(mo):
     mo.md(r"""
     ### Launch Dynasty Functions
-    #### `_poll_main_menu_with_interrupts`
+    #### `poll_main_menu_with_interrupts`
     #### `launch_dynasty`
     """)
     return
@@ -1375,161 +1425,336 @@ def _(mo):
 @app.cell
 def _(
     Button,
-    CFBMainMenuState,
-    HotfixAppliedError,
+    EAConnectionTimeoutError,
+    ImageArray,
+    MainMenuPollOutcome,
+    MainMenuPollingTimeoutError,
+    MenuEvent,
     TemplateConfig,
-    TemplateMatchTimeoutError,
     camera: "dxcam.DXCamera",
     controller,
     is_image_match,
+    is_valid_frame,
     logger,
     time,
 ):
     def poll_main_menu_with_interrupts(
-        main_menu_config: TemplateConfig,
+        cfb_logo_config: TemplateConfig,
+        dynasty_config: TemplateConfig,
         hotfix_overlay_config: TemplateConfig,
+        sign_in_to_EA_config: TemplateConfig,
+        connected_to_EA_config: TemplateConfig,
+        featured_news_config: TemplateConfig,
         timeout: float = 60.0,
-    ) -> CFBMainMenuState:
+    ) -> MainMenuPollOutcome:
         """
-        Polls for the main menu while dismissing pop-ups and checking for hotfixes.
+        Poll for and stabilize the CFB main menu while handling known interrupts.
 
-        This function actively captures the screen to identify either the top-half
-        main menu template or a hotfix overlay. It continuously taps the circle
-        button to dismiss "Featured News" or "Press any button" prompts until the
-        main menu is found. Once the main menu is detected, it enters a brief
-        stabilization phase to ensure a delayed hotfix overlay does not appear.
+        The function progresses through three stages:
+
+        1. Clear the introductory screens until the CFB logo is visible.
+        2. Wait for the main menu while handling a possible hotfix overlay,
+            Featured News popup, and/or EA sign-in interruptions.
+        3. Verify that the Dynasty option remains continuously visible for the
+            stabilization duration.
+
+        A single global timeout budget is shared across all three stages.
 
         Parameters
         ----------
-        top_menu_config : TemplateConfig
-            The configuration object containing the visual template and capture
-            region for a stable main menu UI element.
-        hotfix_config : TemplateConfig
-            The configuration object containing the visual template and capture
-            region for the hotfix overlay "Yes/No" button prompt.
+        cfb_logo_config : TemplateConfig
+            Template configuration used to identify the CFB logo.
+        dynasty_config : TemplateConfig
+            Template configuration used to identify the Dynasty main menu option.
+        hotfix_overlay_config : TemplateConfig
+            Template configuration used to identify the hotfix overlay.
+        sign_in_to_EA_config : TemplateConfig
+            Template configuration used to identify the EA sign-in icon.
+        connected_to_EA_config : TemplateConfig
+            Template configuration used to verify an EA server connection.
+        featured_news_config : TemplateConfig
+            Template configuration used to identify the Featured News popup.
         timeout : float, optional
-            The maximum time in seconds to poll for the menu or hotfix before
-            timing out. Default is 60.0.
+            Maximum total time allowed for the complete polling sequence.
+            Default is 60.0 seconds.
 
         Returns
         -------
-        CFBMainMenuState
-            The final evaluated state of the UI, returning either MAIN_MENU or
-            HOTFIX.
+        MainMenuPollOutcome
+            MAIN_MENU_CLEAN when the Dynasty menu remains stable, or
+            HOTFIX_DETECTED when a hotfix overlay is encountered.
 
         Raises
         ------
-        TemplateMatchTimeoutError
-            If neither the main menu nor the hotfix overlay is detected within
-            the specified timeout period.
+        MainMenuPollingTimeoutError
+            If the overall polling deadline is exceeded.
+        EAConnectionTimeoutError
+            If the EA reconnection fails.
         """
-        logger.info("Polling for CFB main menu while handling potential pop-ups...")
 
-        camera.start(target_fps=10, region=None)
-        start_time = time.time()
-        main_menu_found = False
-        stabilization_start = 0.0
+        POLL_INTERVAL = 0.1
+        STABILIZATION_DURATION = 7.0
+        EA_CONNECT_TIMEOUT = 20.0
+        DYNASTY_CONFIDENCE_THRESHOLD = 0.87
 
-        try:
-            while time.time() - start_time < timeout:
-                frame = camera.get_latest_frame()
+        def get_frame() -> ImageArray | None:
+            """
+            Get the latest valid camera frame.
 
-                if frame is not None and frame.max() > 0:
-                    # Check for the hotfix overlay first.
-                    h_left, h_top, h_right, h_bottom = hotfix_overlay_config.region
-                    hotfix_overlay_region = frame[h_top:h_bottom, h_left:h_right]
-                    is_hotfix_overlay, confidence_hotfix_overlay = is_image_match(
-                        frame=hotfix_overlay_region,
-                        template=hotfix_overlay_config.template,
-                    )
+            Returns None when the camera has not yet produced usable image data.
+            """
+            frame = camera.get_latest_frame()
 
-                    if is_hotfix_overlay:
-                        logger.warning(
-                            f"Hotfix overlay detected! (Confidence: {confidence_hotfix_overlay:.2f})"
-                        )
-                        return CFBMainMenuState.HOTFIX
+            if not is_valid_frame(frame=frame):
+                return None
 
-                    # Check for the Top-Half Main Menu item.
-                    if not main_menu_found:
-                        m_left, m_top, m_right, m_bottom = main_menu_config.region
-                        main_menu_region = frame[m_top:m_bottom, m_left:m_right]
-                        is_main_menu, confidence_main_menu = is_image_match(
-                            frame=main_menu_region,
-                            template=main_menu_config.template,
-                            confidence_threshold=0.80,  # Lowered for potential dimming
-                        )
+            return frame
 
-                        if is_main_menu:
-                            logger.info(
-                                f"CFB main menu located! (Confidence: {confidence_main_menu:.2f}). Stabilizing..."
-                            )
-                            main_menu_found = True
-                            stabilization_start = time.time()
+        def is_target_visible(
+            frame: ImageArray,
+            target_config: TemplateConfig,
+            confidence_threshold: float = 0.90,
+        ) -> bool:
+            """Return whether a configured template is visible within a frame."""
+            left, top, right, bottom = target_config.region
+            region = frame[top:bottom, left:right]
 
-                # State actions.
-                if main_menu_found:
-                    # Wait 10 seconds to ensure a late hotfix overlay doesn't slide in.
-                    if time.time() - stabilization_start > 10.0:
-                        logger.success(
-                            "CFB main menu stabilized. No hotfix overlays detected."
-                        )
-                        return CFBMainMenuState.MAIN_MENU
-                    # Sync with the background camera thread.
-                    time.sleep(0.1)
-                else:
-                    # Keep mashing CIRCLE to get to the main menu.
+            is_match, confidence = is_image_match(
+                frame=region,
+                template=target_config.template,
+                confidence_threshold=confidence_threshold,
+            )
+
+            if is_match:
+                logger.debug(
+                    f"Successfully matched '{target_config.log_context}'! "
+                    f"(Confidence: {confidence:.2f})"
+                )
+
+            return is_match
+
+        def detect_menu_event(frame: ImageArray) -> MenuEvent:
+            """
+            Identify the highest-priority menu event visible in the current frame.
+
+            EA sign-in takes precedence because hotfix detection is only meaningful once
+            the game is connected to EA servers. Other interrupts also take precedence
+            over the Dynasty option because overlays may leave enough of the underlying
+            main menu visible for the Dynasty template to continue matching.
+            """
+            if is_target_visible(frame=frame, target_config=sign_in_to_EA_config):
+                return MenuEvent.EA_SIGN_IN
+
+            if is_target_visible(frame=frame, target_config=hotfix_overlay_config):
+                return MenuEvent.HOTFIX
+
+            if is_target_visible(frame=frame, target_config=featured_news_config):
+                return MenuEvent.FEATURED_NEWS
+
+            if is_target_visible(
+                frame=frame,
+                target_config=dynasty_config,
+                confidence_threshold=DYNASTY_CONFIDENCE_THRESHOLD,
+            ):
+                return MenuEvent.DYNASTY_VISIBLE
+
+            return MenuEvent.NONE
+
+        def wait_for_ea_connection(global_deadline: float) -> None:
+            """Wait until the game reports a successful connection to EA servers."""
+            logger.info("Waiting for connection to EA servers...")
+
+            # If `global_deadline` is sooner than the "would be" EA deadline, then
+            # that becomes `ea_deadline` to ensure respect of the global deadline.
+            ea_deadline = min(
+                global_deadline,
+                time.monotonic() + EA_CONNECT_TIMEOUT,
+            )
+
+            while time.monotonic() < ea_deadline:
+                frame = get_frame()
+
+                if frame is not None and is_target_visible(
+                    frame=frame,
+                    target_config=connected_to_EA_config,
+                ):
+                    logger.success("Connected to EA servers!")
+                    time.sleep(1.0)
+                    return
+
+                time.sleep(POLL_INTERVAL)
+
+            raise EAConnectionTimeoutError(
+                "Timed out waiting for connection to EA servers."
+            )
+
+        def handle_interrupt(
+            event: MenuEvent,
+            global_deadline: float,
+        ) -> MainMenuPollOutcome | None:
+            """
+            Handle an interrupting main menu event.
+
+            Returns HOTFIX_DETECTED when a hotfix requires the outer pipeline to
+            restart the game. Other handled interrupts return None.
+            """
+            match event:
+                case MenuEvent.HOTFIX:
+                    logger.warning("Hotfix overlay detected!")
+                    return MainMenuPollOutcome.HOTFIX_DETECTED
+
+                case MenuEvent.FEATURED_NEWS:
+                    logger.info("Featured News popup detected. Dismissing...")
                     controller.tap(Button.CIRCLE, rest_time=1.0)
 
-            raise TemplateMatchTimeoutError(
-                "Failed to reach CFB main menu within the timeout."
+                case MenuEvent.EA_SIGN_IN:
+                    logger.info("EA Sign-In required. Pressing R2...")
+                    controller.tap(Button.R2)
+                    wait_for_ea_connection(global_deadline=global_deadline)
+
+            return None
+
+        def clear_intro(global_deadline: float) -> None:
+            """Tap Circle periodically until the CFB logo becomes visible."""
+            logger.info("Executing Phase 0: Intro Screen...")
+
+            next_tap_time = time.monotonic()
+
+            while time.monotonic() < global_deadline:
+                frame = get_frame()
+
+                if frame is not None and is_target_visible(
+                    frame=frame,
+                    target_config=cfb_logo_config,
+                ):
+                    logger.info("CFB Logo detected. Phase 0 cleared.")
+                    return
+
+                now = time.monotonic()
+
+                if now >= next_tap_time:
+                    controller.tap(Button.CIRCLE, rest_time=0.0)
+                    next_tap_time = now + 1.0
+
+                time.sleep(POLL_INTERVAL)
+
+            raise MainMenuPollingTimeoutError("Timed out during Phase 0: Intro Screen.")
+
+        def wait_for_main_menu(
+            global_deadline: float,
+        ) -> MainMenuPollOutcome | None:
+            """
+            Wait until the Dynasty option becomes visible.
+
+            Known interruptions are handled while polling. A hotfix is propagated
+            to the caller as a special outcome.
+            """
+            logger.info("Executing Phase 1: Main Menu Search...")
+
+            while time.monotonic() < global_deadline:
+                frame = get_frame()
+
+                if frame is None:
+                    time.sleep(POLL_INTERVAL)
+                    continue
+
+                event = detect_menu_event(frame=frame)
+
+                if event is MenuEvent.DYNASTY_VISIBLE:
+                    logger.info("Dynasty option detected. Phase 1 cleared.")
+                    return None
+
+                outcome = handle_interrupt(
+                    event=event,
+                    global_deadline=global_deadline,
+                )
+
+                if outcome is not None:
+                    return outcome
+
+                time.sleep(POLL_INTERVAL)
+
+            raise MainMenuPollingTimeoutError(
+                "Timed out during Phase 1: Main Menu Search."
             )
+
+        def stabilize_main_menu(
+            global_deadline: float,
+        ) -> MainMenuPollOutcome:
+            """
+            Require the Dynasty option to remain continuously visible.
+
+            Any interruption or loss of the Dynasty template resets the
+            stabilization timer.
+            """
+            logger.info("Executing Phase 2: Main Menu Stabilization...")
+
+            stable_start: float | None = None
+
+            while time.monotonic() < global_deadline:
+                frame = get_frame()
+
+                if frame is None:
+                    stable_start = None
+                    time.sleep(POLL_INTERVAL)
+                    continue
+
+                event = detect_menu_event(frame=frame)
+
+                if event is MenuEvent.DYNASTY_VISIBLE:
+                    now = time.monotonic()
+
+                    if stable_start is None:
+                        stable_start = now
+                        logger.debug("Main menu stabilization timer started.")
+
+                    if now - stable_start >= STABILIZATION_DURATION:
+                        logger.success("CFB main menu is stabilized.")
+                        return MainMenuPollOutcome.MAIN_MENU_CLEAN
+
+                    time.sleep(POLL_INTERVAL)
+                    continue
+
+                # Anything other than a continuously visible Dynasty option breaks
+                # the stabilization window.
+                stable_start = None
+
+                outcome = handle_interrupt(
+                    event=event,
+                    global_deadline=global_deadline,
+                )
+
+                if outcome is not None:
+                    return outcome
+
+                time.sleep(POLL_INTERVAL)
+
+            raise MainMenuPollingTimeoutError(
+                "Timed out during Phase 2: Main Menu Stabilization."
+            )
+
+        # ==============
+        # Main Sequence
+        # ==============
+        logger.info("Polling sequence initiated for CFB main menu...")
+
+        global_deadline = time.monotonic() + timeout
+
+        camera.start(target_fps=10, region=None)
+
+        try:
+            clear_intro(global_deadline=global_deadline)
+
+            search_outcome = wait_for_main_menu(global_deadline=global_deadline)
+
+            if search_outcome is MainMenuPollOutcome.HOTFIX_DETECTED:
+                return search_outcome
+
+            return stabilize_main_menu(global_deadline=global_deadline)
 
         finally:
             camera.stop()
 
-    def launch_dynasty(
-        top_menu_config: TemplateConfig, hotfix_config: TemplateConfig
-    ) -> None:
-        """
-        Navigates to the Dynasty mode hub, handling potential hotfixes.
-
-        This function coordinates the transition from the initial load screen
-        to the main menu. It evaluates the current menu state via the polling
-        function. If a hotfix overlay is detected, it selects "No" to dismiss
-        the prompt and raises an error to trigger a clean pipeline restart.
-
-        Parameters
-        ----------
-        top_menu_config : TemplateConfig
-            The configuration object containing the visual template and capture
-            region for the top-half main menu target.
-        hotfix_config : TemplateConfig
-            The configuration object containing the visual template and capture
-            region for the hotfix overlay target.
-
-        Raises
-        ------
-        HotfixAppliedError
-            If a hotfix overlay is detected and dismissed, signaling the error
-            router to restart the game.
-        """
-        logger.info("Executing sequence to reach Dynasty mode...")
-
-        menu_state = poll_main_menu_with_interrupts(
-            main_menu_config=top_menu_config, hotfix_overlay_config=hotfix_config
-        )
-
-        if menu_state == CFBMainMenuState.HOTFIX:
-            logger.info(
-                "Hotfix overlay detected. Selecting 'No' to dismiss and force restart..."
-            )
-            controller.tap(Button.CROSS, rest_time=2.0)
-
-            # Throw the error so the router can close and relaunch the game.
-            raise HotfixAppliedError("Hotfix dismissed. Game requires a clean restart.")
-
-        logger.info("Entering Dynasty mode...")
-        # Logic to navigate from the top menu item down to Dynasty and click Continue.
     return (poll_main_menu_with_interrupts,)
 
 
@@ -1689,10 +1914,8 @@ def _(mo):
 
 
 @app.cell
-def _(Image, camera: "dxcam.DXCamera", cv2, mo, time):
-    def preview_capture(
-        region: tuple[int, int, int, int], timeout: float = 3.0
-    ) -> mo.Html:
+def _(Image, Region, camera: "dxcam.DXCamera", cv2, is_valid_frame, mo, time):
+    def preview_capture(region: Region, timeout: float = 3.0) -> mo.Html:
         """
         Captures a frame using grab() and outputs it via mo.image().
 
@@ -1717,13 +1940,12 @@ def _(Image, camera: "dxcam.DXCamera", cv2, mo, time):
             A Marimo HTML component containing either the captured image or
             a markdown-formatted error message.
         """
-        start_time = time.time()
+        deadline = time.monotonic() + timeout
 
-        while time.time() - start_time < timeout:
+        while time.monotonic() < deadline:
             frame = camera.grab(region=region)
 
-            # Check that the frame is populated and not completely black.
-            if frame is not None and frame.max() > 0:
+            if is_valid_frame(frame=frame):
                 # Convert from dxcam native BGRA to RGB for correct Pillow
                 # rendering.
                 rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGRA2RGB)
@@ -1743,6 +1965,19 @@ def _(Image, camera: "dxcam.DXCamera", cv2, mo, time):
     #     600,
     # )
     # preview_capture(region=_test_region)
+    return
+
+
+@app.cell
+def _(time):
+    for clock in ("monotonic", "perf_counter"):
+        info = time.get_clock_info(clock)
+
+        print(clock)
+        print(f"  monotonic:  {info.monotonic}")
+        print(f"  adjustable: {info.adjustable}")
+        print(f"  resolution: {info.resolution}")
+        print(f"  implementation: {info.implementation}")
     return
 
 
