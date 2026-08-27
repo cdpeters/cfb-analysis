@@ -77,197 +77,13 @@ def _(
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ### State Handlers
-    """)
-    return
-
-
-@app.cell
-def _(
-    Button,
-    MainMenuPollOutcome,
-    PipelineState,
-    Templates,
-    close_active_game,
-    controller,
-    focus_first_game_tile,
-    focus_welcome_tile,
-    is_home_screen_visible,
-    launch_cfb_game,
-    launch_ps5,
-    logger,
-    poll_main_menu_with_interrupts,
-    return_to_home_screen,
-    time,
-):
-    def handle_initialize_stream() -> PipelineState:
-        """Launches chiaki-ng subprocess and ensures full screen mode."""
-        with logger.contextualize(phase="initialize_stream"):
-            logger.info("Entering State: INITIALIZE_STREAM")
-
-            try:
-                launch_ps5()
-                return PipelineState.VERIFY_STREAM
-            except Exception as e:
-                logger.error(f"Stream initialization failed: {e}")
-                return PipelineState.RECOVER_HARD
-
-    def handle_verify_stream() -> PipelineState:
-        """Diagnoses stream health and handles unclosed game states."""
-        with logger.contextualize(phase="verify_stream"):
-            logger.info("Entering State: VERIFY_STREAM")
-
-            # Check to see if we're already on the PS5 home screen.
-            if is_home_screen_visible(target_config=Templates.PS5_SETTINGS_ICON):
-                logger.info("Stream active. Clean home screen detected.")
-                focus_first_game_tile()
-                return PipelineState.LAUNCH_GAME
-
-            # Assume an unclosed game: return to the PS5 home screen and focus the welcome tile for a PS5
-            # settings icon template match attempt.
-            logger.warning(
-                "Home screen not visible. Attempting to exit potential unclosed game..."
-            )
-            return_to_home_screen()
-            focus_welcome_tile()
-
-            if is_home_screen_visible(target_config=Templates.PS5_SETTINGS_ICON):
-                logger.info("Recovered to home screen. Closing the unclosed game...")
-                focus_first_game_tile()
-                close_active_game()
-                return PipelineState.LAUNCH_GAME
-
-            logger.error("Stream is completely unresponsive.")
-            return PipelineState.RECOVER_HARD
-
-    def handle_launch_game() -> PipelineState:
-        """Locates and launches CFB from the PS5 home screen."""
-        with logger.contextualize(phase="launch_game"):
-            logger.info("Entering State: LAUNCH_GAME")
-
-            try:
-                launch_cfb_game(target_config=Templates.CFB_GAME_TITLE)
-                return PipelineState.STABILIZE_MAIN_MENU
-            except Exception as e:
-                logger.error(f"Failed to launch game: {e}")
-                return PipelineState.RECOVER_HARD
-
-    def handle_stabilize_main_menu() -> PipelineState:
-        """Handles post-launch loading screens, pop-ups, and hotfixes."""
-        with logger.contextualize(phase="stabilize_menu"):
-            logger.info("Entering State: STABILIZE_MAIN_MENU")
-
-            try:
-                main_menu_state = poll_main_menu_with_interrupts(
-                    cfb_logo_config=Templates.CFB_LOGO,
-                    dynasty_config=Templates.DYNASTY_OPTION,
-                    hotfix_overlay_config=Templates.HOTFIX_OVERLAY_YES_OPTION,
-                    sign_in_to_EA_config=Templates.SIGN_IN_TO_EA_ICON,
-                    connected_to_EA_config=Templates.CONNECTED_TO_EA_ICON,
-                    featured_news_config=Templates.FEATURED_NEWS_CLOSE_ICON,
-                )
-
-                if main_menu_state == MainMenuPollOutcome.HOTFIX_DETECTED:
-                    logger.warning("Hotfix detected. Selecting 'No' to dismiss...")
-                    controller.tap(Button.CROSS, rest_time=2.0)
-                    return PipelineState.RECOVER_SOFT
-
-                logger.success("Main menu stabilized.")
-                return PipelineState.LAUNCH_DYNASTY
-
-            except Exception as e:
-                logger.error(f"Menu stabilization failed: {e}")
-                return PipelineState.RECOVER_HARD
-
-    def handle_launch_dynasty() -> PipelineState:
-        """Navigates from a stable main menu into the Dynasty mode save."""
-        with logger.contextualize(phase="launch_dynasty"):
-            logger.info("Entering State: LAUNCH_DYNASTY")
-
-            try:
-                # 1. Navigate down to the 'Dynasty' option
-                logger.debug("Navigating to Dynasty tile...")
-                controller.tap(Button.DPAD_DOWN, rest_time=0.5)
-                # ... add remaining D-pad movements ...
-                controller.tap(Button.CROSS, rest_time=2.0)
-
-                # 2. Select 'Continue' or load specific file
-                logger.debug("Selecting save file...")
-                controller.tap(Button.CROSS, rest_time=5.0)  # Wait for load
-
-                # Optional: Add a quick visual verify here to confirm we are inside the Dynasty hub
-
-                return PipelineState.EXTRACT_ROSTERS
-
-            except Exception as e:
-                logger.error(f"Failed to launch Dynasty mode: {e}")
-                return PipelineState.RECOVER_HARD
-
-    def handle_extract_rosters() -> PipelineState:
-        """Executes the core data extraction sequence."""
-        with logger.contextualize(phase="extract_rosters"):
-            logger.info("Entering State: EXTRACT_ROSTERS")
-
-            # ... Simulate extraction ...
-            time.sleep(15)
-            logger.success("Data extraction complete!")
-            return PipelineState.DONE
-
-    def handle_recover_soft() -> PipelineState:
-        """Closes the game to clear state, leaving the stream active."""
-        with logger.contextualize(phase="recover_soft"):
-            logger.info("Entering State: RECOVER_SOFT")
-
-            try:
-                return_to_home_screen()
-                close_active_game()
-                # The cursor is still on the CFB game tile so we can move directly to `LAUNCH_GAME`.
-                return PipelineState.LAUNCH_GAME
-            except Exception as e:
-                logger.error(f"Soft recovery failed: {e}")
-                return PipelineState.RECOVER_HARD
-
-    return (
-        handle_extract_rosters,
-        handle_initialize_stream,
-        handle_launch_dynasty,
-        handle_launch_game,
-        handle_recover_soft,
-        handle_stabilize_main_menu,
-        handle_verify_stream,
-    )
-
-
-@app.cell
-def _(Enum, auto):
-    class PipelineState(Enum):
-        """States defining the distinct phases of the extraction pipeline."""
-
-        INITIALIZE_STREAM = auto()
-        VERIFY_STREAM = auto()
-        LAUNCH_GAME = auto()
-        STABILIZE_MAIN_MENU = auto()
-        LAUNCH_DYNASTY = auto()
-        EXTRACT_ROSTERS = auto()
-        RECOVER_SOFT = auto()
-        RECOVER_HARD = auto()
-        SHUTDOWN = auto()
-        DONE = auto()
-
-    return (PipelineState,)
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
     ### To-Do
-    #### Check `poll_main_menu_with_interrupts`
-    - [ ] Review the logic and make sure it is correct.
     #### Complete the `handle_launch_dynasty` function
     - [ ] Complete the button sequence to get to the list of dynasties.
     - [ ] Use OCR to select the dynasty by name.
     - [ ] Create semantic wrapper functions for easier readability.
     - [ ] Handle the possibility that the connection to EA Servers has been lost and you need to reconnect via `Button.R2` at the main menu.
+    - [ ] When the list of dynasties on the "load dynasty" screen is small enough, does the scoll bar still show up? Handle this edge case when the scroll bar is not visible.
     #### Build the `navigate_to_rosters` function
     - [ ] Build `navigate_to_rosters` to get from the dynasty home screen to the "View Rosters" screen.
     #### Optimize timeouts
@@ -297,6 +113,7 @@ def _(mo):
 def _():
     import ctypes
     import platform
+    import re
     import subprocess
     import sys
     import time
@@ -307,6 +124,7 @@ def _():
     import marimo as mo
     import numpy as np
     import numpy.typing as npt
+    import pytesseract
     import vgamepad as vg
     from loguru import logger
     from PIL import Image
@@ -445,6 +263,8 @@ def _():
         mo,
         np,
         npt,
+        pytesseract,
+        re,
         subprocess,
         time,
         vg,
@@ -470,6 +290,37 @@ def _(Enum, NamedTuple, Path, auto, cv2, dxcam, np, npt, vg):
     MAX_ATTEMPTS_LAUNCH = 2
     WINDOW_TITLE = "chiaki-ng"
     _PROJECT_DIR = Path.cwd().parent
+
+    # Dynasty Name
+    TARGET_DYNASTY_NAME = "dynasty-name"
+
+    # Dynasty screen regions
+    DYNASTY_LIST_REGION: Region = (55, 290, 695, 925)
+    SCROLLBAR_REGION: Region = (680, 150, 705, 925)
+
+    # Dynasty card detection
+    BRIGHTNESS_THRESHOLD = 200
+
+    MORPH_KERNEL_WIDTH = 21
+    MORPH_KERNEL_HEIGHT = 11
+
+    MIN_CARD_WIDTH = 450
+    MAX_CARD_WIDTH = 650
+
+    MIN_CARD_HEIGHT = 90
+    MAX_CARD_HEIGHT = 180
+
+    # OCR
+    OCR_SCALE_FACTOR = 3.0
+
+    OCR_CONFIRMATION_FRAMES = 3
+    OCR_CONFIRMATION_REQUIRED = 2
+
+    # Navigation / timing
+    FRAME_CAPTURE_TIMEOUT = 2.0
+    DYNASTY_LOAD_TIMEOUT = 30.0
+
+    END_OF_LIST_DIFF_THRESHOLD = 1.5
 
     camera: dxcam.DXCamera = dxcam.create(  # ty: ignore[unresolved-attribute]
         device_idx=0, output_idx=0, output_color="BGRA"
@@ -501,6 +352,18 @@ def _(Enum, NamedTuple, Path, auto, cv2, dxcam, np, npt, vg):
 
     class EAConnectionTimeoutError(Exception):
         """Raised when reconnection to EA servers exceeds its allowed timeout."""
+
+    class DynastyNotFoundError(Exception):
+        """Raised when the requested dynasty is not present in the save list."""
+
+    class DynastySelectionNotFoundError(Exception):
+        """Raised when the highlighted dynasty card cannot be located."""
+
+    class DynastyOCRReadError(Exception):
+        """Raised when OCR cannot produce a stable dynasty-name reading."""
+
+    class FrameCaptureTimeoutError(Exception):
+        """Raised when a usable frame cannot be captured within the timeout."""
 
     def _load_template(path: Path) -> ImageArray:
         """
@@ -755,19 +618,46 @@ def _(Enum, NamedTuple, Path, auto, cv2, dxcam, np, npt, vg):
         DYNASTY_VISIBLE = auto()
         NONE = auto()
 
+    class PipelineState(Enum):
+        """States defining the distinct phases of the extraction pipeline."""
+
+        INITIALIZE_STREAM = auto()
+        VERIFY_STREAM = auto()
+        LAUNCH_GAME = auto()
+        STABILIZE_MAIN_MENU = auto()
+        LAUNCH_DYNASTY = auto()
+        EXTRACT_ROSTERS = auto()
+        RECOVER_SOFT = auto()
+        RECOVER_HARD = auto()
+        SHUTDOWN = auto()
+        DONE = auto()
+
     return (
         Button,
         CFBGameTitleNotFoundError,
         ChiakiExecutableNotFoundError,
         ChiakiFullscreenError,
         ChiakiWindowNotFoundError,
+        DYNASTY_LIST_REGION,
+        DYNASTY_LOAD_TIMEOUT,
+        DynastyNotFoundError,
+        DynastyOCRReadError,
+        DynastySelectionNotFoundError,
         EAConnectionTimeoutError,
+        END_OF_LIST_DIFF_THRESHOLD,
+        FRAME_CAPTURE_TIMEOUT,
+        FrameCaptureTimeoutError,
         ImageArray,
         InputType,
         MainMenuPollOutcome,
         MainMenuPollingTimeoutError,
         MenuEvent,
+        OCR_CONFIRMATION_FRAMES,
+        OCR_CONFIRMATION_REQUIRED,
+        PipelineState,
         Region,
+        SCROLLBAR_REGION,
+        TARGET_DYNASTY_NAME,
         TemplateConfig,
         TemplateMatchTimeoutError,
         Templates,
@@ -1415,9 +1305,8 @@ def _(
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ### Launch Dynasty Functions
+    ### Stabilize Main Menu Function
     #### `poll_main_menu_with_interrupts`
-    #### `launch_dynasty`
     """)
     return
 
@@ -1761,8 +1650,381 @@ def _(
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
+    ### Launch Dynasty Functions
+    #### `capture_frame`
+    #### `find_selected_dynasty_card`
+    #### `get_dynasty_name_region`
+    #### `preprocess_dynasty_name_image`
+    #### `read_dynasty_name`
+    #### `read_dynasty_name_with_retries`
+    #### `normalize_dynasty_name`
+    #### `read_confirmed_dynasty_name`
+    #### `calculate_frame_difference`
+    #### `move_to_next_dynasty`
+    #### `is_scrollbar_at_bottom`
+    #### `load_dynasty_by_name`
+    #### `navigate_to_dynasty_list`
+    """)
+    return
+
+
+@app.cell
+def _(
+    Button,
+    DYNASTY_LIST_REGION: "Region",
+    DYNASTY_LOAD_TIMEOUT,
+    DynastyNotFoundError,
+    DynastyOCRReadError,
+    DynastySelectionNotFoundError,
+    END_OF_LIST_DIFF_THRESHOLD,
+    FRAME_CAPTURE_TIMEOUT,
+    FrameCaptureTimeoutError,
+    ImageArray,
+    OCR_CONFIRMATION_FRAMES,
+    OCR_CONFIRMATION_REQUIRED,
+    Region,
+    SCROLLBAR_REGION: "Region",
+    camera: "dxcam.DXCamera",
+    controller,
+    cv2,
+    is_valid_frame,
+    logger,
+    np,
+    pytesseract,
+    re,
+    time,
+):
+    def capture_frame(
+        region: Region | None = None,
+        timeout: float = FRAME_CAPTURE_TIMEOUT,
+    ) -> ImageArray:
+        """Capture and return a valid frame from the remote-play stream."""
+        deadline = time.monotonic() + timeout
+
+        while time.monotonic() < deadline:
+            frame = camera.grab(region=region)
+
+            if is_valid_frame(frame=frame):
+                return frame
+
+            time.sleep(0.1)
+
+        raise FrameCaptureTimeoutError(
+            f"Failed to capture a valid frame within {timeout:.1f}s."
+        )
+
+    def find_selected_dynasty_card(frame: ImageArray) -> Region:
+        """Locate the white highlighted dynasty card in a full-screen frame."""
+        left, top, right, bottom = DYNASTY_LIST_REGION
+        dynasty_list_frame = frame[top:bottom, left:right]
+
+        gray_frame = cv2.cvtColor(dynasty_list_frame, cv2.COLOR_BGRA2GRAY)
+
+        # The selected card has a very bright background compared with the
+        # unselected dark-gray cards.
+        _, mask = cv2.threshold(gray_frame, 200, 255, cv2.THRESH_BINARY)
+
+        # Join text/logo holes into the surrounding white card.
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (21, 11))
+        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
+
+        contours, _ = cv2.findContours(
+            mask,
+            cv2.RETR_EXTERNAL,
+            cv2.CHAIN_APPROX_SIMPLE,
+        )
+
+        candidates: list[tuple[int, int, int, int]] = []
+
+        for contour in contours:
+            x, y, width, height = cv2.boundingRect(contour)
+
+            # Intentionally broad ranges initially. Tune from actual captures.
+            if width >= 450 and 90 <= height <= 180:
+                candidates.append((x, y, width, height))
+
+        if not candidates:
+            raise DynastySelectionNotFoundError(
+                "Could not locate the highlighted dynasty card."
+            )
+
+        # The real card should normally be the largest qualifying bright rectangle.
+        x, y, width, height = max(
+            candidates,
+            key=lambda box: box[2] * box[3],
+        )
+
+        return (
+            left + x,
+            top + y,
+            left + x + width,
+            top + y + height,
+        )
+
+    def get_dynasty_name_region(card_region: Region) -> Region:
+        """Return the dynasty-name-line region within a selected save card."""
+        left, top, right, bottom = card_region
+
+        width = right - left
+        height = bottom - top
+
+        return (
+            left + int(width * 0.10),
+            top + int(height * 0.66),
+            left + int(width * 0.82),
+            top + int(height * 0.95),
+        )
+
+    def preprocess_dynasty_name_image(frame: ImageArray) -> ImageArray:
+        """Prepare a dynasty-name crop for OCR."""
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGRA2GRAY)
+
+        enlarged = cv2.resize(
+            gray,
+            None,
+            fx=3.0,
+            fy=3.0,
+            interpolation=cv2.INTER_CUBIC,
+        )
+
+        blurred = cv2.GaussianBlur(enlarged, (3, 3), 0)
+
+        _, thresholded = cv2.threshold(
+            blurred,
+            0,
+            255,
+            cv2.THRESH_BINARY + cv2.THRESH_OTSU,
+        )
+
+        return thresholded
+
+    def read_dynasty_name(
+        frame: ImageArray,
+        card_region: Region,
+    ) -> str:
+        """OCR and return the dynasty name from the selected dynasty card."""
+        left, top, right, bottom = get_dynasty_name_region(card_region)
+        name_frame = frame[top:bottom, left:right]
+
+        processed = preprocess_dynasty_name_image(name_frame)
+
+        text = pytesseract.image_to_string(
+            processed,
+            config="--psm 7",
+        )
+
+        dynasty_name, _, _ = text.partition("|")
+
+        return normalize_dynasty_name(dynasty_name)
+
+    def read_dynasty_name_with_retries(
+        max_attempts: int = 3,
+    ) -> str:
+        """Retry multi-frame OCR before declaring the selected card unreadable."""
+        last_error: DynastyOCRReadError | None = None
+
+        for attempt in range(max_attempts):
+            try:
+                return read_confirmed_dynasty_name()
+            except DynastyOCRReadError as e:
+                last_error = e
+                logger.debug(
+                    f"Dynasty OCR attempt {attempt + 1}/{max_attempts} failed."
+                )
+
+        raise DynastyOCRReadError(
+            f"Unable to reliably read selected dynasty after {max_attempts} attempts."
+        ) from last_error
+
+    def normalize_dynasty_name(name: str) -> str:
+        """Normalize OCR text without erasing meaningful name differences."""
+        name = name.strip()
+        name = re.sub(r"\s+", " ", name)
+
+        return name.casefold()
+
+    def read_confirmed_dynasty_name(
+        *,
+        samples: int = OCR_CONFIRMATION_FRAMES,
+        required_matches: int = OCR_CONFIRMATION_REQUIRED,
+    ) -> str:
+        """Return a dynasty name only when repeated OCR readings agree."""
+        readings: list[str] = []
+
+        for _ in range(samples):
+            frame = capture_frame()
+            card_region = find_selected_dynasty_card(frame)
+            name = read_dynasty_name(
+                frame=frame,
+                card_region=card_region,
+            )
+
+            if name:
+                readings.append(name)
+
+            time.sleep(0.1)
+
+        for name in set(readings):
+            if readings.count(name) >= required_matches:
+                return name
+
+        raise DynastyOCRReadError(f"OCR readings did not reach consensus: {readings!r}")
+
+    def calculate_frame_difference(
+        before: ImageArray,
+        after: ImageArray,
+    ) -> float:
+        """Return a normalized visual-difference score between two list images."""
+        before_gray = cv2.cvtColor(before, cv2.COLOR_BGRA2GRAY)
+        after_gray = cv2.cvtColor(after, cv2.COLOR_BGRA2GRAY)
+
+        before_gray = cv2.GaussianBlur(before_gray, (7, 7), 0)
+        after_gray = cv2.GaussianBlur(after_gray, (7, 7), 0)
+
+        difference = cv2.absdiff(before_gray, after_gray)
+
+        return float(np.mean(difference))
+
+    def move_to_next_dynasty() -> bool:
+        """
+        Move to the next dynasty.
+
+        Return True if the list changed and False if the cursor remained on
+        the final dynasty.
+        """
+        before = capture_frame(region=DYNASTY_LIST_REGION)
+
+        controller.tap(
+            Button.DPAD_DOWN,
+            rest_time=0.5,
+        )
+
+        after = capture_frame(region=DYNASTY_LIST_REGION)
+
+        difference = calculate_frame_difference(before, after)
+
+        logger.debug(f"Dynasty-list difference after DPAD_DOWN: {difference:.2f}")
+
+        return difference > END_OF_LIST_DIFF_THRESHOLD
+
+    def is_scrollbar_at_bottom(frame: ImageArray) -> bool:
+        """Return whether the white scrollbar appears to have reached its bottom."""
+        left, top, right, bottom = SCROLLBAR_REGION
+        scrollbar = frame[top:bottom, left:right]
+
+        gray = cv2.cvtColor(scrollbar, cv2.COLOR_BGRA2GRAY)
+
+        _, mask = cv2.threshold(
+            gray,
+            220,
+            255,
+            cv2.THRESH_BINARY,
+        )
+
+        ys, _ = np.where(mask > 0)
+
+        if ys.size == 0:
+            return False
+
+        lowest_white_pixel = int(ys.max())
+
+        # Consider the scrollbar at its bottom when white pixels extend into the
+        # final few percent of the calibrated scrollbar region.
+        region_height = bottom - top
+        bottom_threshold = int(region_height * 0.96)
+
+        return lowest_white_pixel >= bottom_threshold
+
+    def load_dynasty_by_name(
+        target_dynasty_name: str,
+        timeout: float = DYNASTY_LOAD_TIMEOUT,
+    ) -> None:
+        """Search the dynasty save list and load the requested dynasty."""
+        target_name = normalize_dynasty_name(target_dynasty_name)
+        deadline = time.monotonic() + timeout
+        position = 1
+
+        # CREATE NEW DYNASTY is currently selected. Move onto the first save.
+        controller.tap(
+            Button.DPAD_DOWN,
+            rest_time=0.5,
+        )
+
+        while time.monotonic() < deadline:
+            logger.debug(f"Evaluating dynasty save {position}...")
+
+            try:
+                displayed_name = read_confirmed_dynasty_name()
+            except DynastyOCRReadError as e:
+                logger.warning(
+                    f"Could not obtain stable OCR reading for save {position}: {e}"
+                )
+            else:
+                logger.debug(f"Dynasty save {position}: {displayed_name!r}")
+
+                if displayed_name == target_name:
+                    logger.success(f"Target dynasty located: {target_dynasty_name!r}.")
+
+                    controller.tap(
+                        Button.CROSS,
+                        rest_time=5.0,
+                    )
+                    return
+
+            # OCR either produced a non-match or couldn't reach consensus.
+            # Navigation itself does not depend on OCR.
+            moved = move_to_next_dynasty()
+
+            if not moved:
+                frame = capture_frame()
+                scrollbar_at_bottom = is_scrollbar_at_bottom(frame)
+
+                logger.debug(
+                    "DPAD_DOWN produced no meaningful list change. "
+                    f"Scrollbar-at-bottom={scrollbar_at_bottom}."
+                )
+
+                raise DynastyNotFoundError(
+                    f"Dynasty {target_dynasty_name!r} was not found."
+                )
+
+            position += 1
+
+        raise DynastyNotFoundError(
+            f"Timed out while searching for dynasty "
+            f"{target_dynasty_name!r} after {timeout:.1f}s."
+        )
+
+    def navigate_to_dynasty_list() -> None:
+        """Navigate from the stabilized main menu to the dynasty save list."""
+        logger.debug("Navigating to Dynasty mode...")
+
+        for _ in range(6):
+            controller.tap(Button.DPAD_DOWN)
+
+        controller.tap(
+            Button.CROSS,
+            rest_time=2.0,
+        )
+
+        for _ in range(3):
+            controller.tap(Button.DPAD_DOWN)
+
+        controller.tap(
+            Button.CROSS,
+            rest_time=7.0,
+        )
+
+    return load_dynasty_by_name, navigate_to_dynasty_list
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
     ### Shutdown Pipeline Functions
     #### `_shutdown_chiaki_process`
+    #### `_reset_virtual_controller`
+    #### `_stop_camera_capture`
     #### `shutdown_pipeline`
     #### `reset_pipeline_and_ps5`
     """)
@@ -1861,7 +2123,7 @@ def _(camera: "dxcam.DXCamera", controller, logger, subprocess, time):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ### Convert Image Templates to Grayscale
+    ### Convert Image Templates to Grayscale Utility
     #### `convert_template_image_to_grayscale`
     """)
     return
@@ -1907,77 +2169,396 @@ def _(Path, cv2, logger):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ### Preview Image Capture (for prototyping)
-    #### `preview_capture`
+    ### Capture and Display Frame Utilities
+    #### `cv2_to_pil`
+    #### `capture_test_frame`
+    #### `show_full_frame`
+    #### `show_region`
+    #### `show_regions`
+    #### `show_region_overlay`
     """)
     return
 
 
 @app.cell
-def _(Image, Region, camera: "dxcam.DXCamera", cv2, is_valid_frame, mo, time):
-    def preview_capture(region: Region, timeout: float = 3.0) -> mo.Html:
-        """
-        Captures a frame using grab() and outputs it via mo.image().
+def _(
+    Image,
+    ImageArray,
+    Region,
+    camera: "dxcam.DXCamera",
+    cv2,
+    is_valid_frame,
+    mo,
+    time,
+):
+    def cv2_to_pil(frame: ImageArray) -> Image.Image:
+        """Convert an OpenCV image array to a Pillow image for display."""
+        if frame.ndim == 2:
+            return Image.fromarray(frame)
 
-        This function polls the camera for a specified duration until a valid,
-        non-black frame is captured. If successful, it returns the frame as a
-        Marimo image component. If the timeout is reached before a valid frame
-        is captured, it returns a Marimo markdown component with an error
-        message.
+        if frame.shape[2] == 4:
+            rgb = cv2.cvtColor(frame, cv2.COLOR_BGRA2RGB)
+        else:
+            rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
-        Parameters
-        ----------
-        region : tuple[int, int, int, int]
-            The bounding box coordinates for the capture area in the format
-            (left, top, right, bottom).
-        timeout : float, optional
-            The maximum time in seconds to poll for a valid frame before
-            timing out. Default is 3.0 seconds.
+        return Image.fromarray(rgb)
 
-        Returns
-        -------
-        mo.Html
-            A Marimo HTML component containing either the captured image or
-            a markdown-formatted error message.
-        """
+    def capture_test_frame(
+        region: Region | None = None,
+        timeout: float = 3.0,
+    ) -> ImageArray:
+        """Capture a valid frame for prototyping and visual tuning."""
         deadline = time.monotonic() + timeout
 
         while time.monotonic() < deadline:
             frame = camera.grab(region=region)
 
             if is_valid_frame(frame=frame):
-                # Convert from dxcam native BGRA to RGB for correct Pillow
-                # rendering.
-                rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGRA2RGB)
-                image = Image.fromarray(rgb_frame)
+                return frame
 
-                return mo.image(src=image)
-
-            # Hold captures at ~10 FPS to prevent a CPU-hogging tight loop.
             time.sleep(0.1)
 
-        return mo.md("**Error:** Polling timed out. Failed to capture a valid frame.")
+        raise RuntimeError(f"Failed to capture a valid frame within {timeout:.1f}s.")
 
-    # _test_region = (
-    #     100,
-    #     140,
-    #     600,
-    #     600,
-    # )
-    # preview_capture(region=_test_region)
+    def show_full_frame() -> mo.Html:
+        """Capture and display the complete remote-play frame."""
+        frame = capture_test_frame()
+
+        return mo.image(
+            cv2_to_pil(frame),
+            caption="Full screen",
+        )
+
+    def show_region(
+        region: Region,
+        *,
+        caption: str = "Region",
+    ) -> mo.Html:
+        """Capture and display only the requested screen region."""
+        frame = capture_test_frame(region=region)
+
+        return mo.image(
+            cv2_to_pil(frame),
+            caption=caption,
+        )
+
+    def show_regions(
+        regions: dict[str, Region],
+    ) -> mo.Html:
+        """Display a full-screen frame with multiple labeled regions."""
+        frame = capture_test_frame()
+        preview = frame.copy()
+
+        for label, region in regions.items():
+            left, top, right, bottom = region
+
+            cv2.rectangle(
+                preview,
+                (left, top),
+                (right, bottom),
+                (0, 255, 0, 255),
+                3,
+            )
+
+            cv2.putText(
+                preview,
+                label,
+                (left, max(top - 10, 25)),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.6,
+                (0, 255, 0, 255),
+                2,
+                cv2.LINE_AA,
+            )
+
+        return mo.image(
+            cv2_to_pil(preview),
+            caption="Screen regions",
+        )
+
+    def show_region_overlay(
+        region: Region,
+        *,
+        label: str | None = None,
+    ) -> mo.Html:
+        """Display a full-screen frame with one region outlined."""
+        frame = capture_test_frame()
+        preview = frame.copy()
+
+        left, top, right, bottom = region
+
+        cv2.rectangle(
+            preview,
+            (left, top),
+            (right, bottom),
+            (0, 255, 0, 255),
+            3,
+        )
+
+        if label is not None:
+            cv2.putText(
+                preview,
+                label,
+                (left, max(top - 10, 25)),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.7,
+                (0, 255, 0, 255),
+                2,
+                cv2.LINE_AA,
+            )
+
+        return mo.image(
+            cv2_to_pil(preview),
+            caption=label or "Region overlay",
+        )
+
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ### State Handlers
+    """)
     return
 
 
 @app.cell
-def _(time):
-    for clock in ("monotonic", "perf_counter"):
-        info = time.get_clock_info(clock)
+def _(
+    Button,
+    MainMenuPollOutcome,
+    PipelineState,
+    TARGET_DYNASTY_NAME,
+    Templates,
+    close_active_game,
+    controller,
+    focus_first_game_tile,
+    focus_welcome_tile,
+    is_home_screen_visible,
+    launch_cfb_game,
+    launch_ps5,
+    load_dynasty_by_name,
+    logger,
+    navigate_to_dynasty_list,
+    poll_main_menu_with_interrupts,
+    return_to_home_screen,
+    time,
+):
+    def handle_initialize_stream() -> PipelineState:
+        """Launches chiaki-ng subprocess and ensures full screen mode."""
+        with logger.contextualize(phase="initialize_stream"):
+            logger.info("Entering State: INITIALIZE_STREAM")
 
-        print(clock)
-        print(f"  monotonic:  {info.monotonic}")
-        print(f"  adjustable: {info.adjustable}")
-        print(f"  resolution: {info.resolution}")
-        print(f"  implementation: {info.implementation}")
+            try:
+                launch_ps5()
+                return PipelineState.VERIFY_STREAM
+            except Exception as e:
+                logger.error(f"Stream initialization failed: {e}")
+                return PipelineState.RECOVER_HARD
+
+    def handle_verify_stream() -> PipelineState:
+        """Diagnoses stream health and handles unclosed game states."""
+        with logger.contextualize(phase="verify_stream"):
+            logger.info("Entering State: VERIFY_STREAM")
+
+            # Check to see if we're already on the PS5 home screen.
+            if is_home_screen_visible(target_config=Templates.PS5_SETTINGS_ICON):
+                logger.info("Stream active. Clean home screen detected.")
+                focus_first_game_tile()
+                return PipelineState.LAUNCH_GAME
+
+            # Assume an unclosed game: return to the PS5 home screen and focus the welcome tile for a PS5
+            # settings icon template match attempt.
+            logger.warning(
+                "Home screen not visible. Attempting to exit potential unclosed game..."
+            )
+            return_to_home_screen()
+            focus_welcome_tile()
+
+            if is_home_screen_visible(target_config=Templates.PS5_SETTINGS_ICON):
+                logger.info("Recovered to home screen. Closing the unclosed game...")
+                focus_first_game_tile()
+                close_active_game()
+                return PipelineState.LAUNCH_GAME
+
+            logger.error("Stream is completely unresponsive.")
+            return PipelineState.RECOVER_HARD
+
+    def handle_launch_game() -> PipelineState:
+        """Locates and launches CFB from the PS5 home screen."""
+        with logger.contextualize(phase="launch_game"):
+            logger.info("Entering State: LAUNCH_GAME")
+
+            try:
+                launch_cfb_game(target_config=Templates.CFB_GAME_TITLE)
+                return PipelineState.STABILIZE_MAIN_MENU
+            except Exception as e:
+                logger.error(f"Failed to launch game: {e}")
+                return PipelineState.RECOVER_HARD
+
+    def handle_stabilize_main_menu() -> PipelineState:
+        """Handles post-launch loading screens, pop-ups, and hotfixes."""
+        with logger.contextualize(phase="stabilize_menu"):
+            logger.info("Entering State: STABILIZE_MAIN_MENU")
+
+            try:
+                main_menu_state = poll_main_menu_with_interrupts(
+                    cfb_logo_config=Templates.CFB_LOGO,
+                    dynasty_config=Templates.DYNASTY_OPTION,
+                    hotfix_overlay_config=Templates.HOTFIX_OVERLAY_YES_OPTION,
+                    sign_in_to_EA_config=Templates.SIGN_IN_TO_EA_ICON,
+                    connected_to_EA_config=Templates.CONNECTED_TO_EA_ICON,
+                    featured_news_config=Templates.FEATURED_NEWS_CLOSE_ICON,
+                )
+
+                if main_menu_state == MainMenuPollOutcome.HOTFIX_DETECTED:
+                    logger.warning("Hotfix detected. Selecting 'No' to dismiss...")
+                    controller.tap(Button.CROSS, rest_time=2.0)
+                    return PipelineState.RECOVER_SOFT
+
+                logger.success("Main menu stabilized.")
+                return PipelineState.LAUNCH_DYNASTY
+
+            except Exception as e:
+                logger.error(f"Menu stabilization failed: {e}")
+                return PipelineState.RECOVER_HARD
+
+    def handle_launch_dynasty() -> PipelineState:
+        """Navigate from the stable main menu into the target Dynasty save."""
+        with logger.contextualize(phase="launch_dynasty"):
+            logger.info("Entering State: LAUNCH_DYNASTY")
+
+            try:
+                navigate_to_dynasty_list()
+                load_dynasty_by_name(TARGET_DYNASTY_NAME)
+
+                return PipelineState.EXTRACT_ROSTERS
+
+            except Exception as e:
+                logger.error(f"Failed to launch Dynasty mode: {e}")
+                return PipelineState.RECOVER_HARD
+
+    def handle_extract_rosters() -> PipelineState:
+        """Executes the core data extraction sequence."""
+        with logger.contextualize(phase="extract_rosters"):
+            logger.info("Entering State: EXTRACT_ROSTERS")
+
+            # ... Simulate extraction ...
+            time.sleep(15)
+            logger.success("Data extraction complete!")
+            return PipelineState.DONE
+
+    def handle_recover_soft() -> PipelineState:
+        """Closes the game to clear state, leaving the stream active."""
+        with logger.contextualize(phase="recover_soft"):
+            logger.info("Entering State: RECOVER_SOFT")
+
+            try:
+                return_to_home_screen()
+                close_active_game()
+                # The cursor is still on the CFB game tile so we can move directly to `LAUNCH_GAME`.
+                return PipelineState.LAUNCH_GAME
+            except Exception as e:
+                logger.error(f"Soft recovery failed: {e}")
+                return PipelineState.RECOVER_HARD
+
+    return (
+        handle_extract_rosters,
+        handle_initialize_stream,
+        handle_launch_dynasty,
+        handle_launch_game,
+        handle_recover_soft,
+        handle_stabilize_main_menu,
+        handle_verify_stream,
+    )
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ___
+
+    ### Tuning of "Launch Dynasty" Constants
+    """)
+    return
+
+
+@app.cell(disabled=True)
+def _(launch_ps5):
+    launch_ps5()
+    return
+
+
+@app.cell(disabled=True)
+def _(Templates, focus_first_game_tile, launch_cfb_game):
+    focus_first_game_tile()
+    launch_cfb_game(target_config=Templates.CFB_GAME_TITLE)
+    return
+
+
+@app.cell(disabled=True)
+def _(Button, controller):
+    controller.tap(Button.CIRCLE)
+    return
+
+
+@app.cell(disabled=True)
+def _(Button, controller):
+    for _ in range(6):
+        controller.tap(Button.DPAD_DOWN)
+
+    controller.tap(Button.CROSS, rest_time=2.0)
+
+    for _ in range(3):
+        controller.tap(Button.DPAD_DOWN)
+
+    controller.tap(Button.CROSS)
+    return
+
+
+@app.cell
+def _():
+    # # Dynasty screen regions
+    # DYNASTY_LIST_REGION: Region = (55, 290, 695, 925)
+    # SCROLLBAR_REGION: Region = (680, 150, 705, 925)
+
+    # # Dynasty card detection
+    # BRIGHTNESS_THRESHOLD = 200
+
+    # MORPH_KERNEL_WIDTH = 21
+    # MORPH_KERNEL_HEIGHT = 11
+
+    # MIN_CARD_WIDTH = 450
+    # MAX_CARD_WIDTH = 650
+
+    # MIN_CARD_HEIGHT = 90
+    # MAX_CARD_HEIGHT = 180
+
+    # # OCR
+    # OCR_SCALE_FACTOR = 3.0
+
+    # OCR_CONFIRMATION_FRAMES = 3
+    # OCR_CONFIRMATION_REQUIRED = 2
+
+    # # Navigation / timing
+    # FRAME_CAPTURE_TIMEOUT = 2.0
+    # DYNASTY_LOAD_TIMEOUT = 30.0
+
+    # END_OF_LIST_DIFF_THRESHOLD = 1.5
+    return
+
+
+@app.cell(disabled=True)
+def _():
+    # show_full_frame()
+    # show_region(region)
+    # show_region_overlay(region)
+    # show_regions(
+    #     {
+    #         "DYNASTY_LIST": DYNASTY_LIST_REGION,
+    #         "SCROLLBAR": SCROLLBAR_REGION,
+    #     }
+    # )
     return
 
 
