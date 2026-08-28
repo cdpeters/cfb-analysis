@@ -2,6 +2,7 @@ import time
 from enum import Enum, auto
 
 import vgamepad as vg
+from loguru import logger
 
 
 class InputType(Enum):
