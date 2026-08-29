@@ -5,6 +5,7 @@ import marimo as mo
 from PIL import Image
 
 from cfb_pipeline.capture import is_valid_frame
+from cfb_pipeline.runtime import get_camera
 from cfb_pipeline.types import ImageArray, Region
 
 
@@ -25,6 +26,7 @@ def capture_test_frame(
     timeout: float = 3.0,
 ) -> ImageArray:
     """Capture a valid frame for prototyping and visual tuning."""
+    camera = get_camera()
     deadline = time.monotonic() + timeout
 
     while time.monotonic() < deadline:
