@@ -1,9 +1,14 @@
 from cfb_pipeline.bootstrap import bootstrap
 
-bootstrap()
 
-from cfb_pipeline.pipeline import run_pipeline  # noqa: I001
+def main() -> None:
+    """Initialize and run the roster extraction pipeline."""
+    bootstrap()
+
+    from cfb_pipeline.pipeline import run_pipeline
+
+    run_pipeline()
 
 
 if __name__ == "__main__":
-    run_pipeline()
+    main()

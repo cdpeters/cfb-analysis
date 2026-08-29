@@ -3,9 +3,11 @@ from pathlib import Path
 
 from loguru import logger
 
+from cfb_pipeline.config import LOGS_DIR
+
 
 def configure_logging(
-    log_dir: str = "logs",
+    log_path: Path = LOGS_DIR,
     console_level: str = "DEBUG",
     file_level: str = "DEBUG",
     rotation: str = "10 MB",
@@ -22,9 +24,9 @@ def configure_logging(
 
     Parameters
     ----------
-    log_dir : str, optional
+    log_path : Path, optional
         The base directory where log files will be saved. Default is
-        "logs".
+        LOG_DIR.
     console_level : str, optional
         The minimum log level to display in the standard output (console).
         Default is "DEBUG".
@@ -39,7 +41,6 @@ def configure_logging(
         Default is "7 days".
     """
     # Create 'logs' directory.
-    log_path = Path(log_dir)
     log_path.mkdir(parents=True, exist_ok=True)
 
     # Reset Loguru's default state.

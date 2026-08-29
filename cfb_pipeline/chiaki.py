@@ -7,15 +7,15 @@ import win32con
 import win32gui
 from loguru import logger
 
-from cfb_pipeline.config import WINDOW_TITLE
-from cfb_pipeline.exceptions import (
+from .config import WINDOW_TITLE
+from .exceptions import (
     ChiakiExecutableNotFoundError,
     ChiakiFullscreenError,
     ChiakiWindowNotFoundError,
 )
 
 
-def _launch_chiaki_process() -> None:
+def _start_chiaki_process() -> None:
     """
     Launches the chiaki-ng application subprocess.
 
@@ -35,7 +35,7 @@ def _launch_chiaki_process() -> None:
     subprocess.Popen([chiaki_path])
     logger.debug(f"Executed subprocess: {chiaki_path}")
 
-def _find_and_focus_window(window_title: str) -> int:
+def _find_chiaki_window(window_title: str) -> int:
     """
     Finds and readies the `window_title` window.
 
@@ -83,7 +83,7 @@ def _find_and_focus_window(window_title: str) -> int:
         f"Window '{window_title}' failed to launch within the timeout period."
     )
 
-def _ensure_fullscreen(hwnd: int, max_attempts: int = 4) -> None:
+def _ensure_chiaki_fullscreen(hwnd: int, max_attempts: int = 4) -> None:
     """
     Verifies the window is in true full screen and attempts to correct it
     if not.
@@ -153,8 +153,51 @@ def _ensure_fullscreen(hwnd: int, max_attempts: int = 4) -> None:
 
     raise ChiakiFullscreenError("chiaki-ng fullscreen correction failed.")
 
-def launch_ps5() -> None:
+def launch_chiaki() -> None:
     """Needs documentation."""
-    _launch_chiaki_process()
-    hwnd = _find_and_focus_window(window_title=WINDOW_TITLE)
-    _ensure_fullscreen(hwnd)
+    _start_chiaki_process()
+    hwnd = _find_chiaki_window(window_title=WINDOW_TITLE)
+    _ensure_chiaki_fullscreen(hwnd)
+
+def shutdown_chiaki() -> None:
+    """
+    Terminates the chiaki-ng application, prioritizing a graceful shutdown.
+
+    Attempts a standard termination to allow chiaki-ng to execute its
+    'action on disconnect' (e.g., putting the PS5 in rest mode). If the
+    process does not close gracefully within a short timeout, it forcefully
+    kills the executable to ensure the stream is disconnected.
+    """
+    logger.info("Initiating chiaki-ng shutdown...")
+    try:
+        # Attempt graceful shutdown first (no /F flag).
+        logger.debug("Sending graceful close signal to chiaki-ng...")
+        subprocess.run(
+            ["taskkill", "/IM", "chiaki.exe"],
+            capture_output=True,
+            text=True,
+        )
+
+        # Give the application time to send the sleep command and close.
+        time.sleep(5.0)
+
+        # Follow up with a force kill to ensure it isn't hanging.
+        result = subprocess.run(
+            ["taskkill", "/F", "/T", "/IM", "chiaki.exe"],
+            capture_output=True,
+            text=True,
+        )
+
+        if result.returncode == 0:
+            logger.warning("chiaki-ng hung and required a force kill to terminate.")
+        elif "not found" in result.stderr.lower():
+            logger.success("chiaki-ng shut down gracefully.")
+        else:
+            logger.warning(
+                f"Taskkill returned an unexpected result: {result.stderr.strip()}"
+            )
+
+    except Exception:
+        logger.exception(
+            "Critical error occurred while attempting to terminate chiaki-ng."
+        )

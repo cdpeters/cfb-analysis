@@ -1,27 +1,39 @@
 import re
 import time
+from typing import cast
 
 import cv2
 import numpy as np
 import pytesseract
 from loguru import logger
 
-from cfb_pipeline.capture import capture_frame
-from cfb_pipeline.config import (
+from .capture import capture_frame
+from .config import (
+    BRIGHTNESS_THRESHOLD,
     DYNASTY_LIST_REGION,
     DYNASTY_LOAD_TIMEOUT,
     END_OF_LIST_DIFF_THRESHOLD,
+    MAX_CARD_HEIGHT,
+    MAX_CARD_WIDTH,
+    MIN_CARD_HEIGHT,
+    MIN_CARD_WIDTH,
+    MORPH_KERNEL_HEIGHT,
+    MORPH_KERNEL_WIDTH,
     OCR_CONFIRMATION_FRAMES,
     OCR_CONFIRMATION_REQUIRED,
+    OCR_SCALE_FACTOR,
+    SCROLLBAR_BOTTOM_THRESHOLD,
+    SCROLLBAR_BRIGHTNESS_THRESHOLD,
     SCROLLBAR_REGION,
 )
-from cfb_pipeline.controller import Button
-from cfb_pipeline.exceptions import (
+from .controller import Button
+from .exceptions import (
     DynastyNotFoundError,
     DynastyOCRReadError,
     DynastySelectionNotFoundError,
 )
-from cfb_pipeline.types import ImageArray, Region
+from .runtime import get_controller
+from .types import ImageArray, Region
 
 
 def find_selected_dynasty_card(frame: ImageArray) -> Region:
@@ -33,10 +45,10 @@ def find_selected_dynasty_card(frame: ImageArray) -> Region:
 
     # The selected card has a very bright background compared with the
     # unselected dark-gray cards.
-    _, mask = cv2.threshold(gray_frame, 200, 255, cv2.THRESH_BINARY)
+    _, mask = cv2.threshold(gray_frame, BRIGHTNESS_THRESHOLD, 255, cv2.THRESH_BINARY)
 
     # Join text/logo holes into the surrounding white card.
-    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (21, 11))
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (MORPH_KERNEL_WIDTH, MORPH_KERNEL_HEIGHT))
     mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
 
     contours, _ = cv2.findContours(
@@ -51,7 +63,7 @@ def find_selected_dynasty_card(frame: ImageArray) -> Region:
         x, y, width, height = cv2.boundingRect(contour)
 
         # Intentionally broad ranges initially. Tune from actual captures.
-        if width >= 450 and 90 <= height <= 180:
+        if (MIN_CARD_WIDTH <= width <= MAX_CARD_WIDTH and MIN_CARD_HEIGHT <= height <= MAX_CARD_HEIGHT):
             candidates.append((x, y, width, height))
 
     if not candidates:
@@ -93,8 +105,8 @@ def preprocess_dynasty_name_image(frame: ImageArray) -> ImageArray:
     enlarged = cv2.resize(
         gray,
         None,
-        fx=3.0,
-        fy=3.0,
+        fx=OCR_SCALE_FACTOR,
+        fy=OCR_SCALE_FACTOR,
         interpolation=cv2.INTER_CUBIC,
     )
 
@@ -107,7 +119,7 @@ def preprocess_dynasty_name_image(frame: ImageArray) -> ImageArray:
         cv2.THRESH_BINARY + cv2.THRESH_OTSU,
     )
 
-    return thresholded
+    return cast(ImageArray, thresholded)
 
 def read_dynasty_name(
     frame: ImageArray,
@@ -203,6 +215,7 @@ def move_to_next_dynasty() -> bool:
     Return True if the list changed and False if the cursor remained on
     the final dynasty.
     """
+    controller = get_controller()
     before = capture_frame(region=DYNASTY_LIST_REGION)
 
     controller.tap(
@@ -227,7 +240,7 @@ def is_scrollbar_at_bottom(frame: ImageArray) -> bool:
 
     _, mask = cv2.threshold(
         gray,
-        220,
+        SCROLLBAR_BRIGHTNESS_THRESHOLD,
         255,
         cv2.THRESH_BINARY,
     )
@@ -242,7 +255,7 @@ def is_scrollbar_at_bottom(frame: ImageArray) -> bool:
     # Consider the scrollbar at its bottom when white pixels extend into the
     # final few percent of the calibrated scrollbar region.
     region_height = bottom - top
-    bottom_threshold = int(region_height * 0.96)
+    bottom_threshold = int(region_height * SCROLLBAR_BOTTOM_THRESHOLD)
 
     return lowest_white_pixel >= bottom_threshold
 
@@ -251,6 +264,7 @@ def load_dynasty_by_name(
     timeout: float = DYNASTY_LOAD_TIMEOUT,
 ) -> None:
     """Search the dynasty save list and load the requested dynasty."""
+    controller = get_controller()
     target_name = normalize_dynasty_name(target_dynasty_name)
     deadline = time.monotonic() + timeout
     position = 1
@@ -309,6 +323,7 @@ def load_dynasty_by_name(
 def navigate_to_dynasty_list() -> None:
     """Navigate from the stabilized main menu to the dynasty save list."""
     logger.debug("Navigating to Dynasty mode...")
+    controller = get_controller()
 
     for _ in range(6):
         controller.tap(Button.DPAD_DOWN)

@@ -1,6 +1,26 @@
-from enum import auto, Enum
+import time
+from enum import Enum, auto
 
 from loguru import logger
+
+from .cfb import (
+    MainMenuPollOutcome,
+    dismiss_hotfix_overlay,
+    launch_cfb_game,
+    poll_main_menu_with_interrupts,
+)
+from .chiaki import launch_chiaki
+from .config import TARGET_DYNASTY_NAME
+from .dynasty import load_dynasty_by_name, navigate_to_dynasty_list
+from .lifecycle import reset_pipeline_and_ps5, shutdown_pipeline
+from .ps5 import (
+    close_active_game,
+    focus_first_game_tile,
+    focus_welcome_tile,
+    is_home_screen_visible,
+    return_to_home_screen,
+)
+from .templates import Templates
 
 
 class PipelineState(Enum):
@@ -23,7 +43,7 @@ def handle_initialize_stream() -> PipelineState:
         logger.info("Entering State: INITIALIZE_STREAM")
 
         try:
-            launch_ps5()
+            launch_chiaki()
             return PipelineState.VERIFY_STREAM
         except Exception as e:
             logger.error(f"Stream initialization failed: {e}")
@@ -71,6 +91,7 @@ def handle_launch_game() -> PipelineState:
 
 def handle_stabilize_main_menu() -> PipelineState:
     """Handles post-launch loading screens, pop-ups, and hotfixes."""
+
     with logger.contextualize(phase="stabilize_menu"):
         logger.info("Entering State: STABILIZE_MAIN_MENU")
 
@@ -85,8 +106,7 @@ def handle_stabilize_main_menu() -> PipelineState:
             )
 
             if main_menu_state == MainMenuPollOutcome.HOTFIX_DETECTED:
-                logger.warning("Hotfix detected. Selecting 'No' to dismiss...")
-                controller.tap(Button.CROSS, rest_time=2.0)
+                dismiss_hotfix_overlay()
                 return PipelineState.RECOVER_SOFT
 
             logger.success("Main menu stabilized.")

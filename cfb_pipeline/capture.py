@@ -1,8 +1,11 @@
 import time
 
-from cfb_pipeline.config import FRAME_CAPTURE_TIMEOUT
-from cfb_pipeline.exceptions import FrameCaptureTimeoutError
-from cfb_pipeline.types import ImageArray, Region
+from loguru import logger
+
+from .config import FRAME_CAPTURE_TIMEOUT
+from .exceptions import FrameCaptureTimeoutError
+from .runtime import get_camera
+from .types import ImageArray, Region
 
 
 def is_valid_frame(frame: ImageArray | None) -> bool:
@@ -14,6 +17,7 @@ def capture_frame(
     timeout: float = FRAME_CAPTURE_TIMEOUT,
 ) -> ImageArray:
     """Capture and return a valid frame from the remote-play stream."""
+    camera = get_camera()
     deadline = time.monotonic() + timeout
 
     while time.monotonic() < deadline:
@@ -27,3 +31,14 @@ def capture_frame(
     raise FrameCaptureTimeoutError(
         f"Failed to capture a valid frame within {timeout:.1f}s."
     )
+
+def _stop_camera_capture() -> None:
+    """Safely terminates the background dxcam capture thread if active."""
+    camera = get_camera()
+
+    try:
+        if camera.is_capturing:
+            camera.stop()
+            logger.debug("Global dxcam capture thread stopped.")
+    except Exception:
+        logger.exception("Failed to stop dxcam globally.")

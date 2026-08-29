@@ -3,7 +3,7 @@ import platform
 
 from loguru import logger
 
-from cfb_pipeline.logging_config import configure_logging
+from .logging_config import configure_logging
 
 
 def make_dpi_aware() -> None:
@@ -49,6 +49,10 @@ def make_dpi_aware() -> None:
             ) from e
 
 def bootstrap() -> None:
-    """Perform process-wide initialization before GUI-dependent imports."""
+    """Perform process-wide application initialization."""
     configure_logging()
     make_dpi_aware()
+
+    from .runtime import initialize_runtime
+
+    initialize_runtime()

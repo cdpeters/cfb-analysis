@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from cfb_pipeline.types import Region
+from .types import Region
 
 MAX_ATTEMPTS_LAUNCH = 2
 WINDOW_TITLE = "chiaki-ng"
@@ -8,6 +8,7 @@ WINDOW_TITLE = "chiaki-ng"
 # Paths.
 _PROJECT_DIR = Path(__file__).resolve().parents[1]
 TEMPLATES_DIR = _PROJECT_DIR / "assets" / "templates"
+LOGS_DIR = _PROJECT_DIR / "logs"
 
 # Dynasty Name.
 TARGET_DYNASTY_NAME = "dynasty-name"
@@ -18,6 +19,10 @@ SCROLLBAR_REGION: Region = (680, 150, 705, 925)
 
 # Dynasty card detection.
 BRIGHTNESS_THRESHOLD = 200
+
+# Scrollbar detection.
+SCROLLBAR_BRIGHTNESS_THRESHOLD = 220
+SCROLLBAR_BOTTOM_THRESHOLD = 0.96
 
 MORPH_KERNEL_WIDTH = 21
 MORPH_KERNEL_HEIGHT = 11

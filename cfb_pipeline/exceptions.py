@@ -6,6 +6,7 @@ class TemplateMatchTimeoutError(Exception):
     """Raised when the timeout is exceeded during polling for a template match."""
 
 
+
 # Chiaki/Remote Play Errors.
 class ChiakiExecutableNotFoundError(Exception):
     """Raised when the `chiaki-ng` executable is not found."""
@@ -17,6 +18,7 @@ class ChiakiWindowNotFoundError(Exception):
     """Raised when the local chiaki-ng window fails to appear or become visible."""
 
 
+
 # PS5 UI Errors.
 class CFBGameTitleNotFoundError(Exception):
     """Raised when the CFB game title is not found on the PS5 home screen."""
@@ -25,12 +27,14 @@ class PS5SettingsIconNotFoundError(Exception):
     """Raised when the PS5 Settings Icon is not found on the PS5 home screen."""
 
 
+
 # CFB Main Menu UI Errors.
 class EAConnectionTimeoutError(Exception):
     """Raised when reconnection to EA servers exceeds its allowed timeout."""
 
 class MainMenuPollingTimeoutError(Exception):
     """Raised when main-menu polling exceeds its overall deadline."""
+
 
 
 # Load Dynasty UI Errors.

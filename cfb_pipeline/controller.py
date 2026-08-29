@@ -238,3 +238,12 @@ class VirtualController:
         self._execute_action(
             button=button, action_time=self.DEFAULT_HOLD_TIME, rest_time=actual_rest
         )
+
+    def reset(self) -> None:
+        """Reset the virtual gamepad to a neutral state."""
+        try:
+            self.gamepad.reset()
+            self.gamepad.update()
+            logger.debug("Virtual DS4 controller reset to neutral state.")
+        except Exception:
+            logger.exception("Failed to reset virtual controller.")
