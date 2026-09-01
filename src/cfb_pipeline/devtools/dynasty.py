@@ -13,7 +13,7 @@ from cfb_pipeline.config import (
     MORPH_KERNEL_WIDTH,
 )
 from cfb_pipeline.types import ImageArray
-from devtools.cv2_tuning import (
+from cfb_pipeline.devtools.cv2_tuning import (
     TuningResult,
     TuningStage,
     draw_contour_candidates,
