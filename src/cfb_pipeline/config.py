@@ -6,7 +6,7 @@ MAX_ATTEMPTS_LAUNCH = 2
 WINDOW_TITLE = "chiaki-ng"
 
 # Paths.
-_PROJECT_DIR = Path(__file__).resolve().parents[1]
+_PROJECT_DIR = Path(__file__).resolve().parents[2]
 TEMPLATES_DIR = _PROJECT_DIR / "assets" / "templates"
 DYNASTY_LIST_IMAGES_DIR = _PROJECT_DIR / "assets" / "dynasty_list_images"
 LOGS_DIR = _PROJECT_DIR / "logs"
