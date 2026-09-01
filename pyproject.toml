@@ -10,6 +10,7 @@ dependencies = [
     "numpy>=2.5.1",
     "opencv-python>=5.0.0.93",
     "pillow>=12.3.0",
+    "polars>=1.44.1",
     "pytesseract>=0.3.13",
     "pywin32>=312",
     "vgamepad>=0.1.0",
@@ -44,3 +45,9 @@ default_width = "medium"
 
 [tool.ruff.lint]
 extend-select = ["I"]
+
+[tool.setuptools.packages.find]
+include = [
+    "cfb_pipeline*",
+    "devtools*",
+]
