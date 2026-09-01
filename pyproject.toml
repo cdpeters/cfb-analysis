@@ -16,6 +16,10 @@ dependencies = [
     "vgamepad>=0.1.0",
 ]
 
+[build-system]
+requires = ["uv_build>=0.12.7,<0.13"]
+build-backend = "uv_build"
+
 [dependency-groups]
 dev = [
     "marimo[lsp]>=0.23.14",
@@ -23,6 +27,10 @@ dev = [
     "ty>=0.0.61",
     "types-pywin32>=312.0.0.20260609",
 ]
+
+[tool.uv.build-backend]
+module-name = "cfb_pipeline"
+module-root = "src"
 
 [tool.marimo.diagnostics]
 enabled = true
