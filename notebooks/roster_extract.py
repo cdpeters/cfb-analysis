@@ -468,7 +468,7 @@ def _():
     from cfb_pipeline.runtime import get_controller
     from cfb_pipeline.templates import Templates
     from cfb_pipeline.types import ImageArray, Region
-    from devtools.capture import (
+    from cfb_pipeline.devtools.capture import (
         cv2_to_pil,
         load_frames,
         save_frame,
@@ -477,12 +477,12 @@ def _():
         show_region_overlay,
         show_regions,
     )
-    from devtools.cv2_tuning import (
+    from cfb_pipeline.devtools.cv2_tuning import (
         create_frame_slider,
         show_tuning_result,
         measure_frame_contours,
     )
-    from devtools.dynasty import process_dynasty_test_frame
+    from cfb_pipeline.devtools.dynasty import process_dynasty_test_frame
 
     mo.Html("""
     <style>
