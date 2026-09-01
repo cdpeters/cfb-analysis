@@ -1,11 +1,11 @@
-import time
+from pathlib import Path
+from typing import cast
 
 import cv2
 import marimo as mo
 from PIL import Image
 
-from cfb_pipeline.capture import is_valid_frame
-from cfb_pipeline.runtime import get_camera
+from cfb_pipeline.capture import capture_frame
 from cfb_pipeline.types import ImageArray, Region
 
 
@@ -21,27 +21,48 @@ def cv2_to_pil(frame: ImageArray) -> Image.Image:
 
     return Image.fromarray(rgb)
 
-def capture_test_frame(
-    region: Region | None = None,
-    timeout: float = 3.0,
-) -> ImageArray:
-    """Capture a valid frame for prototyping and visual tuning."""
-    camera = get_camera()
-    deadline = time.monotonic() + timeout
+def load_frames(
+    directory: Path,
+    *,
+    pattern: str = "*.png",
+) -> list[tuple[Path, ImageArray]]:
+    """Load image files from a directory for visual tuning."""
+    frames: list[tuple[Path, ImageArray]] = []
 
-    while time.monotonic() < deadline:
-        frame = camera.grab(region=region)
+    for path in sorted(directory.glob(pattern)):
+        frame = cv2.imread(
+            path,
+            cv2.IMREAD_UNCHANGED,
+        )
 
-        if is_valid_frame(frame=frame):
-            return frame
+        if frame is None:
+            raise RuntimeError(
+                f"Failed to load test frame: {path}"
+            )
 
-        time.sleep(0.1)
+        frame = cast(ImageArray, frame)
+        frames.append((path, frame))
 
-    raise RuntimeError(f"Failed to capture a valid frame within {timeout:.1f}s.")
+    if not frames:
+        raise RuntimeError(
+            f"No test frames matching {pattern!r} found in {directory}"
+        )
+
+    return frames
+
+def save_frame(
+    frame: ImageArray,
+    path: Path,
+) -> None:
+    """Save an image frame to disk."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    if not cv2.imwrite(path, frame):
+        raise RuntimeError(f"Failed to save frame: {path}")
 
 def show_full_frame() -> mo.Html:
     """Capture and display the complete remote-play frame."""
-    frame = capture_test_frame()
+    frame = capture_frame()
 
     return mo.image(
         cv2_to_pil(frame),
@@ -54,7 +75,7 @@ def show_region(
     caption: str = "Region",
 ) -> mo.Html:
     """Capture and display only the requested screen region."""
-    frame = capture_test_frame(region=region)
+    frame = capture_frame(region=region)
 
     return mo.image(
         cv2_to_pil(frame),
@@ -62,20 +83,20 @@ def show_region(
     )
 
 def show_regions(
-    regions: dict[str, Region],
+    regions: dict[str, tuple[Region, tuple[int, int, int, int]]],
 ) -> mo.Html:
     """Display a full-screen frame with multiple labeled regions."""
-    frame = capture_test_frame()
+    frame = capture_frame()
     preview = frame.copy()
 
-    for label, region in regions.items():
+    for label, (region, color) in regions.items():
         left, top, right, bottom = region
 
         cv2.rectangle(
             preview,
             (left, top),
             (right, bottom),
-            (0, 255, 0, 255),
+            color,
             3,
         )
 
@@ -85,7 +106,7 @@ def show_regions(
             (left, max(top - 10, 25)),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.6,
-            (0, 255, 0, 255),
+            color,
             2,
             cv2.LINE_AA,
         )
@@ -101,7 +122,7 @@ def show_region_overlay(
     label: str | None = None,
 ) -> mo.Html:
     """Display a full-screen frame with one region outlined."""
-    frame = capture_test_frame()
+    frame = capture_frame()
     preview = frame.copy()
 
     left, top, right, bottom = region
