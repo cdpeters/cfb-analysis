@@ -330,7 +330,7 @@ def navigate_to_dynasty_list() -> None:
 
     controller.tap(
         Button.CROSS,
-        rest_time=2.0,
+        rest_time=1.2,
     )
 
     for _ in range(3):
