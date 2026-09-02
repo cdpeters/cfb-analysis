@@ -60,9 +60,8 @@ def save_frame(
     if not cv2.imwrite(path, frame):
         raise RuntimeError(f"Failed to save frame: {path}")
 
-def show_full_frame() -> mo.Html:
+def show_full_frame(frame: ImageArray) -> mo.Html:
     """Capture and display the complete remote-play frame."""
-    frame = capture_frame()
 
     return mo.image(
         cv2_to_pil(frame),
@@ -70,23 +69,27 @@ def show_full_frame() -> mo.Html:
     )
 
 def show_region(
+    frame: ImageArray,
     region: Region,
-    *,
-    caption: str = "Region",
 ) -> mo.Html:
     """Capture and display only the requested screen region."""
-    frame = capture_frame(region=region)
+    left, top, right, bottom = region
+
+    region_frame = frame[
+        top:bottom,
+        left:right,
+    ]
 
     return mo.image(
-        cv2_to_pil(frame),
-        caption=caption,
+        cv2_to_pil(region_frame),
+        caption=f"Region: {region}",
     )
 
 def show_regions(
+    frame: ImageArray,
     regions: dict[str, tuple[Region, tuple[int, int, int, int]]],
 ) -> mo.Html:
     """Display a full-screen frame with multiple labeled regions."""
-    frame = capture_frame()
     preview = frame.copy()
 
     for label, (region, color) in regions.items():
@@ -117,12 +120,12 @@ def show_regions(
     )
 
 def show_region_overlay(
+    frame: ImageArray,
     region: Region,
     *,
     label: str | None = None,
 ) -> mo.Html:
     """Display a full-screen frame with one region outlined."""
-    frame = capture_frame()
     preview = frame.copy()
 
     left, top, right, bottom = region
