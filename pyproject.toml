@@ -10,10 +10,15 @@ dependencies = [
     "numpy>=2.5.1",
     "opencv-python>=5.0.0.93",
     "pillow>=12.3.0",
+    "polars>=1.44.1",
     "pytesseract>=0.3.13",
     "pywin32>=312",
     "vgamepad>=0.1.0",
 ]
+
+[build-system]
+requires = ["uv_build>=0.12.7,<0.13"]
+build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
@@ -22,6 +27,10 @@ dev = [
     "ty>=0.0.61",
     "types-pywin32>=312.0.0.20260609",
 ]
+
+[tool.uv.build-backend]
+module-name = "cfb_pipeline"
+module-root = "src"
 
 [tool.marimo.diagnostics]
 enabled = true
@@ -44,3 +53,9 @@ default_width = "medium"
 
 [tool.ruff.lint]
 extend-select = ["I"]
+
+[tool.setuptools.packages.find]
+include = [
+    "cfb_pipeline*",
+    "devtools*",
+]

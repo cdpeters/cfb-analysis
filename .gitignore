@@ -219,3 +219,6 @@ __marimo__/
 
 # Chiaki settings
 chiaki_settings/
+
+# logs directory
+logs/

@@ -1,0 +1,9 @@
+expected_name,normalized_name,count_mismatches,space_err,char_err,raw_ocr,exact_match,frame,pipe_found,trailing_text,region_width,region_height,otsu_threshold
+socks shirts dynasty,socks shirts dynasty,"",false,false,SOCKS SHIRTS DYNASTY | 9/3/2026,true,dynasty_card_position_00.png,true,9/3/2026,353,40,0
+cdp0089_19,cdp0089 _19,' ': 1/0,true,false,CDP0089 _19 | 9/1/2026,false,dynasty_card_position_01.png,true,9/1/2026,353,40,0
+cdp0089_21_apple_ora,cdp0089_21_apple_ora,"",false,false,CDP0089_21_APPLE_ORA | 9/1/2026,true,dynasty_card_position_02.png,true,9/1/2026,353,40,0
+dynasty-name,dynasty-name,"",false,false,DYNASTY-NAME | 9/1/2026,true,dynasty_card_position_03.png,true,9/1/2026,353,40,0
+cdp0089_18,cdpo089 _18,"' ': 1/0, '0': 1/2, 'o': 1/0",true,true,CDPO089 _18 | 8/23/2026,false,dynasty_card_position_04.png,true,8/23/2026,353,40,0
+dynasty-aug23-11h44m20-autosave,dynasty-aug23-11h44m20-autosave,"",false,false,DYNASTY-AUG23-11H44M20-AUTOSAVE | 8,true,dynasty_card_position_05.png,true,8,353,40,0
+illinois-dynasty,illinois- dynasty,' ': 1/0,true,false,ILLINOIS- DYNASTY | 8/23/2026,false,dynasty_card_position_06.png,true,8/23/2026,353,40,0
+cdp0089_13,cdpo0089 _13,"' ': 1/0, 'o': 1/0",true,true,CDPO0089 _13 | 8/23/2026,false,dynasty_card_position_07.png,true,8/23/2026,353,40,0

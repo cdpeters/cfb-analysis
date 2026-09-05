@@ -1,0 +1,56 @@
+from pathlib import Path
+
+from .types import Region
+
+MAX_ATTEMPTS_LAUNCH = 2
+WINDOW_TITLE = "chiaki-ng"
+
+# Paths.
+_PROJECT_DIR = Path(__file__).resolve().parents[2]
+TEMPLATES_DIR = _PROJECT_DIR / "assets" / "templates"
+DYNASTY_LIST_IMAGES_DIR = _PROJECT_DIR / "assets" / "dynasty_list_images"
+LOGS_DIR = _PROJECT_DIR / "logs"
+
+# Dynasty Name.
+TARGET_DYNASTY_NAME = "dynasty-name"
+
+# Dynasty screen regions.
+DYNASTY_LIST_REGION: Region = (55, 310, 695, 930)
+SCROLLBAR_REGION: Region = (677, 157, 700, 925)
+
+# Dynasty card detection.
+BRIGHTNESS_THRESHOLD = 225
+
+# Scrollbar detection.
+SCROLLBAR_BRIGHTNESS_THRESHOLD = 220
+SCROLLBAR_BOTTOM_THRESHOLD = 0.96
+
+MORPH_KERNEL_WIDTH = 11
+MORPH_KERNEL_HEIGHT = 10
+
+MIN_CARD_WIDTH = 585
+MAX_CARD_WIDTH = 600
+
+MIN_CARD_HEIGHT = 130
+MAX_CARD_HEIGHT = 140
+
+# Dynasty name OCR preprocessing.
+OCR_SCALE_FACTOR = 1.0
+OCR_BLUR_KERNEL: tuple[int, int] | None = (3, 3)
+OCR_USE_OTSU_THRESHOLD = True
+OCR_TESSERACT_CONFIG = "--psm 7"
+
+OCR_CONFIRMATION_FRAMES = 3
+OCR_CONFIRMATION_REQUIRED = 2
+
+# Navigation/timing.
+FRAME_CAPTURE_TIMEOUT = 2.0
+DYNASTY_LOAD_TIMEOUT = 30.0
+
+END_OF_LIST_DIFF_THRESHOLD = 1.5
+
+# Dynasty name region within selected card.
+DYNASTY_NAME_LEFT_OFFSET = 65
+DYNASTY_NAME_TOP_OFFSET = 87
+DYNASTY_NAME_RIGHT_OFFSET = 418
+DYNASTY_NAME_BOTTOM_OFFSET = 127
