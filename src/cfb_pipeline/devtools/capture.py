@@ -5,7 +5,6 @@ import cv2
 import marimo as mo
 from PIL import Image
 
-from cfb_pipeline.capture import capture_frame
 from cfb_pipeline.types import ImageArray, Region
 
 

@@ -6,8 +6,8 @@ import cv2
 import marimo as mo
 import polars as pl
 
-from cfb_pipeline.types import ImageArray
 from cfb_pipeline.devtools.capture import cv2_to_pil
+from cfb_pipeline.types import ImageArray
 
 
 @dataclass(slots=True)

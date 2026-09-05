@@ -4,12 +4,24 @@ __generated_with = "0.24.0"
 app = marimo.App(width="columns")
 
 
-@app.cell(column=0)
+@app.cell(column=0, hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ### Constants
+    """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ### Constants
+    """)
+    return
+
+
+@app.cell
 def _():
-    # Dynasty screen regions.
-
-    # Dynasty card detection.
-
     # Scrollbar detection.
     SCROLLBAR_BRIGHTNESS_THRESHOLD = 220
     SCROLLBAR_BOTTOM_THRESHOLD = 0.96
@@ -36,6 +48,16 @@ def _():
     )
 
 
+@app.cell
+def _():
+    tuning_params = {
+        "scale_factor": 6.92,
+        "blur_kernel": None,
+        "use_otsu_threshold": True,
+    }
+    return (tuning_params,)
+
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -46,21 +68,13 @@ def _(mo):
 
 @app.cell
 def _(
-    BRIGHTNESS_THRESHOLD,
     Button,
     DYNASTY_LIST_REGION,
     DYNASTY_LOAD_TIMEOUT,
     DynastyNotFoundError,
     DynastyOCRReadError,
-    DynastySelectionNotFoundError,
     END_OF_LIST_DIFF_THRESHOLD,
     ImageArray,
-    MAX_CARD_HEIGHT,
-    MAX_CARD_WIDTH,
-    MIN_CARD_HEIGHT,
-    MIN_CARD_WIDTH,
-    MORPH_KERNEL_HEIGHT,
-    MORPH_KERNEL_WIDTH,
     OCR_CONFIRMATION_FRAMES,
     OCR_CONFIRMATION_REQUIRED,
     OCR_SCALE_FACTOR,
@@ -71,82 +85,15 @@ def _(
     capture_frame,
     cast,
     cv2,
+    find_selected_dynasty_card,
     get_controller,
+    get_dynasty_name_region,
     logger,
     np,
     pytesseract,
     re,
     time,
 ):
-    def find_selected_dynasty_card(frame: ImageArray) -> Region:
-        """Locate the white highlighted dynasty card in a full-screen frame."""
-        left, top, right, bottom = DYNASTY_LIST_REGION
-        dynasty_list_frame = frame[top:bottom, left:right]
-
-        gray_frame = cv2.cvtColor(dynasty_list_frame, cv2.COLOR_BGRA2GRAY)
-
-        # The selected card has a very bright background compared with the
-        # unselected dark-gray cards.
-        _, mask = cv2.threshold(
-            gray_frame, BRIGHTNESS_THRESHOLD, 255, cv2.THRESH_BINARY
-        )
-
-        # Join text/logo holes into the surrounding white card.
-        kernel = cv2.getStructuringElement(
-            cv2.MORPH_RECT, (MORPH_KERNEL_WIDTH, MORPH_KERNEL_HEIGHT)
-        )
-        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
-
-        contours, _ = cv2.findContours(
-            mask,
-            cv2.RETR_EXTERNAL,
-            cv2.CHAIN_APPROX_SIMPLE,
-        )
-
-        candidates: list[tuple[int, int, int, int]] = []
-
-        for contour in contours:
-            x, y, width, height = cv2.boundingRect(contour)
-
-            # Intentionally broad ranges initially. Tune from actual captures.
-            if (
-                MIN_CARD_WIDTH <= width <= MAX_CARD_WIDTH
-                and MIN_CARD_HEIGHT <= height <= MAX_CARD_HEIGHT
-            ):
-                candidates.append((x, y, width, height))
-
-        if not candidates:
-            raise DynastySelectionNotFoundError(
-                "Could not locate the highlighted dynasty card."
-            )
-
-        # The real card should normally be the largest qualifying bright rectangle.
-        x, y, width, height = max(
-            candidates,
-            key=lambda box: box[2] * box[3],
-        )
-
-        return (
-            left + x,
-            top + y,
-            left + x + width,
-            top + y + height,
-        )
-
-    def get_dynasty_name_region(card_region: Region) -> Region:
-        """Return the dynasty-name-line region within a selected save card."""
-        left, top, right, bottom = card_region
-
-        width = right - left
-        height = bottom - top
-
-        return (
-            left + int(width * 0.10),
-            top + int(height * 0.66),
-            left + int(width * 0.82),
-            top + int(height * 0.95),
-        )
-
     def preprocess_dynasty_name_image(frame: ImageArray) -> ImageArray:
         """Prepare a dynasty-name crop for OCR."""
         gray = cv2.cvtColor(frame, cv2.COLOR_BGRA2GRAY)
@@ -406,9 +353,12 @@ def _(mo):
     mo.md(r"""
     ### To-Do
     #### Complete the `handle_launch_dynasty` function
-    - [ ] Complete the button sequence to get to the list of dynasties.
+    - [x] Complete the button sequence to get to the list of dynasties.
     - [ ] Use OCR to select the dynasty by name.
     - [ ] When the list of dynasties on the "load dynasty" screen is small enough, does the scoll bar still show up? Handle this edge case when the scroll bar is not visible.
+    #### Edge Case:
+    - [ ] If CFB is running and I go to the PS5 home screen without closing CFB, CFB will still be running. While on the PS5 home screen, if I shut down the PS5 or enter rest mode without closing CFB, CFB will now be in a suspended state. When I turn on the PS5 again, since I wasn't in CFB when I chose to shut down or enter rest mode, the PS5 will land on the home screen. The script will see this as a normal launch sequence as the PS5 settings icon is found. However, when I launch CFB it will resume from its suspended state on whatever screen I was last on. Because this could be any screen and there are no assumptions I can make about it I'm not sure what to do.
+    - [ ] for this "suspended state" scenario, it seems that every time I click on CFB from the PS5 home screen I'm immediately taken to the last screen I was on and I see that screen for a second or two before the "Connection Lost" overlay pops up prompting me to sign back in to EA servers. I think this will happen every single time because I don't think EA has an automatic reconnect to EA servers feature when launching from a suspended state. If so, this is what I can look for as another "menu event". Although I did just see a "Connection Error" overlay pop up over the "Connection Lost" overlay, so maybe it is best to just to let the `poll_main_menu_with_interrupts` timeout once, then assume it is the "suspended state" scenario, treat that scenario like an "unclosed game" scenario, attempt to return to the main menu, attempt to close the game and then launch the game. Because we are not 100% certain this would be a "suspended state" scenario, we might have to look for the "Close Game" option on the CFB game tile's options to see if it needs closing. This is assuming the `return_to_home_screen` function does find the PS5 settings icon.
     #### Build the `navigate_to_rosters` function
     - [ ] Build `navigate_to_rosters` to get from the dynasty home screen to the "View Rosters" screen.
     #### Optimize timeouts
@@ -452,8 +402,14 @@ def _():
         MAX_CARD_WIDTH,
         MIN_CARD_WIDTH,
         MIN_CARD_HEIGHT,
+        DYNASTY_LIST_IMAGES_DIR,
+        DYNASTY_NAME_LEFT_OFFSET,
+        DYNASTY_NAME_TOP_OFFSET,
+        DYNASTY_NAME_RIGHT_OFFSET,
+        DYNASTY_NAME_BOTTOM_OFFSET,
     )
     from cfb_pipeline.controller import Button
+    from cfb_pipeline.dynasty import find_selected_dynasty_card, get_dynasty_name_region
     from cfb_pipeline.exceptions import (
         DynastyNotFoundError,
         DynastyOCRReadError,
@@ -477,12 +433,17 @@ def _():
         show_region_overlay,
         show_regions,
     )
-    from cfb_pipeline.devtools.cv2_tuning import (
+    from cfb_pipeline.devtools.image_diagnostics import (
         create_frame_slider,
         show_tuning_result,
         measure_frame_contours,
     )
-    from cfb_pipeline.devtools.dynasty import process_dynasty_test_frame
+    from cfb_pipeline.devtools.dynasty import (
+        build_selected_dynasty_card_diagnostics,
+        build_dynasty_name_ocr_diagnostics,
+        measure_dynasty_name_ocr,
+    )
+    from cfb_pipeline.devtools.geometry import global_to_local_region
 
     mo.Html("""
     <style>
@@ -492,46 +453,124 @@ def _():
     </style>
     """)
     return (
-        BRIGHTNESS_THRESHOLD,
         Button,
         DYNASTY_LIST_IMAGES_DIR,
         DYNASTY_LIST_REGION,
         DynastyNotFoundError,
         DynastyOCRReadError,
-        DynastySelectionNotFoundError,
         ImageArray,
-        MAX_CARD_HEIGHT,
-        MAX_CARD_WIDTH,
-        MIN_CARD_HEIGHT,
-        MIN_CARD_WIDTH,
-        MORPH_KERNEL_HEIGHT,
-        MORPH_KERNEL_WIDTH,
+        Path,
         Region,
         SCROLLBAR_REGION,
         Templates,
+        build_dynasty_name_ocr_diagnostics,
+        build_selected_dynasty_card_diagnostics,
         capture_frame,
         cast,
+        close_active_game,
         create_frame_slider,
         cv2,
-        cv2_to_pil,
+        find_selected_dynasty_card,
         focus_first_game_tile,
         get_controller,
+        get_dynasty_name_region,
         launch_cfb_game,
         launch_chiaki,
         load_frames,
         logger,
+        measure_dynasty_name_ocr,
         measure_frame_contours,
         mo,
         np,
-        process_dynasty_test_frame,
         pytesseract,
         re,
+        return_to_home_screen,
+        save_frame,
         show_tuning_result,
         time,
     )
 
 
 @app.cell(column=1, hide_code=True)
+def _(mo):
+    mo.md(r"""
+    #### Dynasty Name OCR Tuning
+    """)
+    return
+
+
+@app.cell
+def _(
+    build_dynasty_name_ocr_diagnostics,
+    dynasty_test_frames,
+    frame_index,
+    show_tuning_result,
+    tuning_params,
+):
+    _path, _frame = dynasty_test_frames[frame_index.value]
+
+    _result = build_dynasty_name_ocr_diagnostics(_frame, **tuning_params)
+
+    show_tuning_result(
+        slider=frame_index,
+        frame_path=_path,
+        result=_result,
+    )
+    return
+
+
+@app.cell
+def _(
+    dynasty_test_frames,
+    expected_names,
+    measure_dynasty_name_ocr,
+    tuning_params,
+):
+    dynasty_name_frame = measure_dynasty_name_ocr(
+        dynasty_test_frames,
+        expected_names,
+        **tuning_params,
+        tesseract_config=(
+            "--psm 7 "
+            "-c load_system_dawg=0 "
+            "-c load_freq_dawg=0"
+        ),
+    )
+    dynasty_name_frame
+    return
+
+
+@app.cell
+def _(Path):
+    expected_names = {
+        "dynasty_card_position_00.png": "SOCKS SHIRTS DYNASTY",
+        "dynasty_card_position_01.png": "CDP0089_19",
+        "dynasty_card_position_02.png": "CDP0089_21_APPLE_ORA",
+        "dynasty_card_position_03.png": "DYNASTY-NAME",
+        "dynasty_card_position_04.png": "CDP0089_18",
+        "dynasty_card_position_05.png": "DYNASTY-AUG23-11H44M20-AUTOSAVE",
+        "dynasty_card_position_06.png": "ILLINOIS-DYNASTY",
+        "dynasty_card_position_07.png": "CDP0089_13",
+    }
+
+    TUNING_RESULTS_DIR = Path.cwd() / "tuning_results"
+    TUNING_RESULTS_DIR.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+    return (expected_names,)
+
+
+@app.cell
+def _():
+    # dynasty_name_frame.write_csv(
+    #     TUNING_RESULTS_DIR
+    #     / f"dynasty_name_baseline_grayscale.csv"
+    # )
+    return
+
+
+@app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ___
@@ -568,8 +607,15 @@ def _(Button, controller):
 
 @app.cell(disabled=True)
 def _(Button, controller):
-    controller.tap(Button.DPAD_DOWN)
-    # controller.tap(Button.DPAD_UP)
+    # controller.tap(Button.DPAD_DOWN)
+    controller.tap(Button.DPAD_UP)
+    return
+
+
+@app.cell(disabled=True)
+def _(close_active_game, return_to_home_screen):
+    return_to_home_screen()
+    close_active_game()
     return
 
 
@@ -598,6 +644,25 @@ def _(Button, controller):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
+    #### Save Dynasty List Frames
+    """)
+    return
+
+
+@app.cell(disabled=True)
+def _(Button, DYNASTY_LIST_IMAGES_DIR, capture_frame, controller, save_frame):
+    for index in range(8):
+        controller.tap(Button.DPAD_DOWN, rest_time=1.5)
+        frame = capture_frame()
+        save_frame(
+            frame, DYNASTY_LIST_IMAGES_DIR / f"dynasty_card_position_0{index}.png"
+        )
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
     ### Tuning CV2 Parameters for Finding Dynasty Save Cards
     """)
     return
@@ -616,19 +681,19 @@ def _(DYNASTY_LIST_IMAGES_DIR, create_frame_slider, load_frames):
 
 @app.cell
 def _(
+    build_selected_dynasty_card_diagnostics,
     dynasty_test_frames,
     frame_index,
-    process_dynasty_test_frame,
     show_tuning_result,
 ):
-    path, frame = dynasty_test_frames[frame_index.value]
+    _path, _frame = dynasty_test_frames[frame_index.value]
 
-    result = process_dynasty_test_frame(frame)
+    _result = build_selected_dynasty_card_diagnostics(_frame)
 
     show_tuning_result(
         slider=frame_index,
-        frame_path=path,
-        result=result,
+        frame_path=_path,
+        result=_result,
     )
     return
 
@@ -642,38 +707,19 @@ def _(mo):
 
 
 @app.cell
-def _(dynasty_test_frames, measure_frame_contours, process_dynasty_test_frame):
+def _(
+    build_selected_dynasty_card_diagnostics,
+    dynasty_test_frames,
+    measure_frame_contours,
+):
     contour_measurements = measure_frame_contours(
         dynasty_test_frames,
-        process_dynasty_test_frame,
+        build_selected_dynasty_card_diagnostics,
         min_width=100,
         min_height=40,
     )
 
     contour_measurements
-    return
-
-
-@app.cell
-def _(DYNASTY_LIST_REGION):
-    DYNASTY_LIST_REGION
-    return
-
-
-@app.cell
-def _(DYNASTY_LIST_REGION, cv2_to_pil, dynasty_test_frames, mo):
-    left, top, right, bottom = DYNASTY_LIST_REGION
-    selected_card_frame = dynasty_test_frames[5][1][top+473:top+473+135, left+23:left+23+592]
-
-    mo.image(
-        cv2_to_pil(selected_card_frame),
-        caption=f"Selected dynasty card — {592}x{135}",
-    )
-    return
-
-
-@app.cell
-def _():
     return
 
 

@@ -12,6 +12,10 @@ from .config import (
     BRIGHTNESS_THRESHOLD,
     DYNASTY_LIST_REGION,
     DYNASTY_LOAD_TIMEOUT,
+    DYNASTY_NAME_BOTTOM_OFFSET,
+    DYNASTY_NAME_LEFT_OFFSET,
+    DYNASTY_NAME_RIGHT_OFFSET,
+    DYNASTY_NAME_TOP_OFFSET,
     END_OF_LIST_DIFF_THRESHOLD,
     MAX_CARD_HEIGHT,
     MAX_CARD_WIDTH,
@@ -37,46 +41,95 @@ from .types import ImageArray, Region
 
 
 def find_selected_dynasty_card(frame: ImageArray) -> Region:
-    """Locate the white highlighted dynasty card in a full-screen frame."""
+    """Locate the currently highlighted dynasty card."""
+
+    # ==========================================
+    # 1. Crop to the dynasty-list screen region
+    # ==========================================
+    # Limit image processing to the portion of the screen where dynasty
+    # cards can appear. This reduces noise from unrelated UI elements.
     left, top, right, bottom = DYNASTY_LIST_REGION
-    dynasty_list_frame = frame[top:bottom, left:right]
+    list_frame = frame[top:bottom, left:right]
 
-    gray_frame = cv2.cvtColor(dynasty_list_frame, cv2.COLOR_BGRA2GRAY)
+    # ======================================
+    # 2. Convert the list image to grayscale
+    # ======================================
+    # Brightness is what distinguishes the selected white card from the
+    # darker unselected cards, so color information is unnecessary here.
+    gray_frame = cv2.cvtColor(list_frame, cv2.COLOR_BGRA2GRAY)
 
-    # The selected card has a very bright background compared with the
-    # unselected dark-gray cards.
-    _, mask = cv2.threshold(gray_frame, BRIGHTNESS_THRESHOLD, 255, cv2.THRESH_BINARY)
-
-    # Join text/logo holes into the surrounding white card.
-    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (MORPH_KERNEL_WIDTH, MORPH_KERNEL_HEIGHT))
-    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
-
-    contours, _ = cv2.findContours(
-        mask,
-        cv2.RETR_EXTERNAL,
-        cv2.CHAIN_APPROX_SIMPLE,
+    # ==========================================
+    # 3. Create a binary mask of bright regions
+    # ==========================================
+    # Pixels brighter than BRIGHTNESS_THRESHOLD become white (255);
+    # all others become black (0). The selected card should therefore
+    # appear as a large white region in the resulting mask.
+    _, mask_frame = cv2.threshold(
+        gray_frame, BRIGHTNESS_THRESHOLD, 255, cv2.THRESH_BINARY
     )
 
+    # ============================================
+    # 4. Join gaps within the selected card region
+    # ============================================
+    # Text, logos, and icons create dark holes inside the white card.
+    # Morphological closing fills/bridges small gaps so the selected card
+    # is more likely to be detected as one contiguous white object.
+    kernel = cv2.getStructuringElement(
+        cv2.MORPH_RECT, (MORPH_KERNEL_WIDTH, MORPH_KERNEL_HEIGHT)
+    )
+
+    closed_frame = cv2.morphologyEx(mask_frame, cv2.MORPH_CLOSE, kernel)
+
+    # ==================================
+    # 5. Find the outer white boundaries
+    # ==================================
+    # Each contour represents the outline of a connected white object in
+    # the processed mask. RETR_EXTERNAL ignores nested/internal contours
+    # because only the outer boundary of each object matters here.
+    contours, _ = cv2.findContours(
+        closed_frame, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+    )
+
+    # ==========================================
+    # 6. Filter contours by dynasty-card geometry
+    # ==========================================
+    # Convert each contour to a rectangular bounding box and keep only
+    # objects whose width and height fall within the expected card range.
+    #
+    # OpenCV bounding rectangles use:
+    #     (x, y, width, height)
+    #
+    # where x/y are relative to `list_frame`, not the full screen.
     candidates: list[tuple[int, int, int, int]] = []
 
     for contour in contours:
         x, y, width, height = cv2.boundingRect(contour)
 
-        # Intentionally broad ranges initially. Tune from actual captures.
-        if (MIN_CARD_WIDTH <= width <= MAX_CARD_WIDTH and MIN_CARD_HEIGHT <= height <= MAX_CARD_HEIGHT):
+        if (
+            MIN_CARD_WIDTH <= width <= MAX_CARD_WIDTH
+            and MIN_CARD_HEIGHT <= height <= MAX_CARD_HEIGHT
+        ):
             candidates.append((x, y, width, height))
 
-    if not candidates:
+    # ==============================================
+    # 7. Require exactly one selected-card candidate
+    # ==============================================
+    # The UI guarantees that exactly one dynasty card is selected at a
+    # time. Zero candidates means detection failed; multiple candidates
+    # means the filtering criteria are ambiguous and should not be trusted.
+    if len(candidates) != 1:
         raise DynastySelectionNotFoundError(
-            "Could not locate the highlighted dynasty card."
+            f"Expected exactly one selected dynasty card; found {len(candidates)}."
         )
 
-    # The real card should normally be the largest qualifying bright rectangle.
-    x, y, width, height = max(
-        candidates,
-        key=lambda box: box[2] * box[3],
-    )
+    x, y, width, height = candidates[0]
 
+    # =========================================
+    # 8. Convert back to full-screen coordinates
+    # =========================================
+    # Candidate coordinates are relative to the cropped dynasty-list
+    # frame. Add the list-region offsets to return the card's full screen
+    # (left, top, right, bottom) coordinates.
     return (
         left + x,
         top + y,
@@ -86,16 +139,13 @@ def find_selected_dynasty_card(frame: ImageArray) -> Region:
 
 def get_dynasty_name_region(card_region: Region) -> Region:
     """Return the dynasty-name-line region within a selected save card."""
-    left, top, right, bottom = card_region
-
-    width = right - left
-    height = bottom - top
+    left, top, _, _ = card_region
 
     return (
-        left + int(width * 0.10),
-        top + int(height * 0.66),
-        left + int(width * 0.82),
-        top + int(height * 0.95),
+        left + DYNASTY_NAME_LEFT_OFFSET,
+        top + DYNASTY_NAME_TOP_OFFSET,
+        left + DYNASTY_NAME_RIGHT_OFFSET,
+        top + DYNASTY_NAME_BOTTOM_OFFSET,
     )
 
 def preprocess_dynasty_name_image(frame: ImageArray) -> ImageArray:
